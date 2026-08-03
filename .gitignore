@@ -23,3 +23,5 @@ examples/mnist/data/
 
 # Claude Code local settings (machine-specific permissions, not project config)
 .claude/settings.local.json
+idea.md
+usages.md
