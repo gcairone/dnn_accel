@@ -1,0 +1,21 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "fastmlp"
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = ["numpy"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+wheel.packages = ["python/fastmlp"]
+
+# Only the extension is needed for a wheel -- the C++ test/benchmark
+# binaries (tests/cpp, benchmarks/cpp) are dev-only, never shipped.
+cmake.args = [
+    "-DFASTMLP_BUILD_TESTS=OFF",
+    "-DFASTMLP_BUILD_BENCHMARKS=OFF",
+    "-DFASTMLP_SIMD_BACKEND=AVX2",
+]

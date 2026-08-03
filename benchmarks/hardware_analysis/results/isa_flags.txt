@@ -1,0 +1,20 @@
+=== ISA flags of interest ===
+sse4_2           yes
+avx              yes
+avx2             yes
+fma              yes
+f16c             yes
+avx512f          no
+avx512cd         no
+avx512bw         no
+avx512dq         no
+avx512vl         no
+avx512_vnni      no
+avx512bf16       no
+avx512_fp16      no
+amx_tile         no
+amx_bf16         no
+
+=== register width implied by ISA (not directly reported by lscpu) ===
+AVX2 only    -> 16x 256-bit YMM registers
+AVX-512F+    -> 32x 512-bit ZMM registers (widens YMM0-15 usage to 32 regs)

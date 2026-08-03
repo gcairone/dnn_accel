@@ -1,0 +1,25 @@
+# Out-of-source CMake build directories (see the project notes for why there are
+# four: build/ = SCALAR backend for regression testing, build-avx2/ = the
+# AVX2 backend that actually produces the shipped extension, build-examples/
+# and build-bench/ = same AVX2 backend, just with different
+# FASTMLP_BUILD_* options so rebuilding them never touches the shipped .so).
+/build/
+/build-avx2/
+/build-examples/
+/build-bench/
+
+# Built Python extension -- produced by bindings/python's CMake target
+# straight into the package directory, not source.
+python/fastmlp/_fastmlp*.so
+
+# Python bytecode / test caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Datasets generated on demand by examples/*/{generate_data,prepare_data}.py
+examples/two_moons/data/
+examples/mnist/data/
+
+# Claude Code local settings (machine-specific permissions, not project config)
+.claude/settings.local.json
