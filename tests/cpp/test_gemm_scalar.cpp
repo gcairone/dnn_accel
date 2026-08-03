@@ -77,7 +77,7 @@ TEST(gemm_dX_hand_case) {
   float W[N * K] = {1, 0, 1, 0, 1, 1};
   float dX[B * K] = {0};
 
-  gemm_dX_f32(dY, W, dX, B, K, N);
+  gemm_dX_f32(dY, W, dX, B, K, N, nullptr);
 
   float expected[B * K] = {1, 2, 3, 3, 4, 7};
   for (int i = 0; i < B * K; i++) ASSERT_EQ(dX[i], expected[i]);

@@ -17,8 +17,16 @@ void gemm_xwt_f32(const float* X, const float* W, const float* bias,
   }
 }
 
+void gemv_xwt_f32(const float* x, const float* W, const float* bias, float* y, int K, int N) {
+  gemm_xwt_f32(x, W, bias, y, 1, K, N);
+}
+
+// `pack` is the AVX2 backend's L1 scratch (see the header). The scalar
+// reference has no cache-blocking to do, so it ignores it -- the parameter
+// exists only to keep both backends' signatures identical, which is what
+// lets test_simd_kernel call them interchangeably.
 void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K,
-                  int N) {
+                  int N, float* /*pack*/) {
   for (int b = 0; b < B; b++) {
     const float* dy_row = dY + (size_t)b * N;
     float* dx_row = dX + (size_t)b * K;
@@ -58,7 +66,8 @@ void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols
   }
 }
 
-void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N) {
+void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
+                          float* /*pack*/) {
   for (int n = 0; n < N; n++) {
     float* dw_row = dW + (size_t)n * K;
     const float* dyt_row = dYt + (size_t)n * B;

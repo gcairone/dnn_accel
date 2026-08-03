@@ -6,7 +6,7 @@ CPU (AMD Ryzen 7 4800H / Zen 2), single-threaded. The point: PyTorch's CPU
 path pays for a computational graph, dynamic dispatch, and a general
 thread-pool BLAS that a small-to-medium, statically-shaped MLP doesn't need.
 This library skips all of that and, on this specific CPU, beats PyTorch's
-single-thread throughput on most shapes measured so far — training and
+single-thread throughput on every shape measured so far — training and
 inference alike.
 
 Full design rationale: [`idea.md`](idea.md). Intended API by example:
@@ -26,10 +26,11 @@ the acceptance benchmark), [`examples/inference/results.md`](examples/inference/
 
 | | fastmlp | PyTorch | speedup |
 |---|---|---|---|
-| training, `[20,64,32,1]` B=128 | 47 us/step | 408 us/step | **8.65x** |
-| training, `[512,256,128,1]` B=256 | 4083 us/step | 3241 us/step | 0.79x (still losing) |
-| inference, `[8,16,8,1]` B=1 | 0.22 us/call | 33.6 us/call | **155x** |
-| inference, `[784,256,128,10]` B=1 | 22.6 us/call | 33.4 us/call | 1.48x (near parity) |
+| training, `[20,64,32,1]` B=128 | 44 us/step | 394 us/step | **9.02x** |
+| training, `[512,256,128,1]` B=256 | 2579 us/step | 3107 us/step | **1.20x** |
+| training, real MNIST `[784,256,128,10]` B=128 | 2234 us/iter | 3582 us/iter | **1.60x** |
+| inference, `[8,16,8,1]` B=1 | 0.12 us/call | 32.2 us/call | **265x** |
+| inference, `[512,512]` B=1 | 12.6 us/call | 33.8 us/call | **2.68x** |
 
 ## What's in scope
 

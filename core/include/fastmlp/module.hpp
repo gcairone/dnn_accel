@@ -16,6 +16,13 @@ struct ModuleConfig {
   ActivationKind activation;
   int max_batch;
   bool inference_only = false;
+  // A composite module always needs its own-stack input gradient -- that is
+  // what it splits among its children. A LEAF's is a dead end: nothing
+  // upstream consumes it, so by default the first layer skips that GEMM
+  // entirely (and skips allocating its buffers). Set this to keep it anyway,
+  // which is the only way own_input_grad() stays readable on a leaf; the
+  // gradient tests in tests/cpp use it as their finite-difference oracle.
+  bool retain_input_grad = false;
   std::optional<uint64_t> seed = std::nullopt;
 };
 
@@ -50,8 +57,10 @@ class Module {
   // Leaf: gradient w.r.t. the raw external input passed to forward(),
   // valid after backward(). Composite: gradient w.r.t. the concatenated
   // child-output buffer (an internal quantity, exposed for debugging/
-  // testing). Only valid if !inference_only.
-  const float* own_input_grad() const { return dx_own_.data(); }
+  // testing). Only valid if !inference_only, and on a leaf only if the
+  // config asked for it (ModuleConfig::retain_input_grad) -- otherwise
+  // it was never computed and this returns nullptr rather than stale zeros.
+  const float* own_input_grad() const { return dx_own_.empty() ? nullptr : dx_own_.data(); }
 
   void freeze();      // this module's own layers only
   void unfreeze();

@@ -13,6 +13,11 @@ struct LinearConfig {
   int max_batch;
   ActivationKind activation;
   bool inference_only = false;
+  // False for the FIRST layer of a stack whose input gradient nobody reads --
+  // the dX GEMM is then dead work exactly as expensive as the dW one. Module
+  // sets it (see ModuleConfig::retain_input_grad); constructing a Linear
+  // directly keeps the full behaviour.
+  bool needs_input_grad = true;
   // nullopt = seeded from std::random_device (nondeterministic); set = a
   // reproducible init, used by tests and anywhere deterministic behavior matters.
   std::optional<uint64_t> seed = std::nullopt;
@@ -38,6 +43,7 @@ class Linear {
   // frozen layer still computes and returns dX, propagating gradient
   // upstream, but never touches its own weight gradients). Throws
   // StateError if inference_only (no gradient/cache buffers exist).
+  // Returns nullptr if the config asked for no input gradient.
   const float* backward(const float* dY, int batch);
 
   void zero_grad();
@@ -90,6 +96,9 @@ class Linear {
   std::vector<float> dW_, db_;
   std::vector<float> dz_buf_;  // scratch for activation_backward output
   std::vector<float> dx_buf_;  // the buffer backward() returns
+  // L1 scratch the dX/dW kernels copy their 16-wide K-slice into, sized for
+  // whichever of the two needs more rows -- see pack_scratch_floats().
+  std::vector<float> pack_buf_;
 };
 
 }  // namespace fastmlp

@@ -35,7 +35,32 @@
 // gemm_xwt_f32 (unpacked, (N,K)) is kept as the correctness reference and
 // is what tests compare the packed path against.
 
+#include <cstddef>
+
 namespace fastmlp::simd {
+
+// PACKED K-SLICE SCRATCH (the backward kernels' `pack` argument)
+// -------------------------------------------------------------
+// dX and dW both read their large operand (W and the X-cache respectively)
+// one 16-float K-slice at a time, walking the *other* dimension at the
+// operand's natural row stride of K floats. When K is large -- and
+// especially when it is a power of two -- that stride maps every row onto a
+// handful of the L1's 64 sets, and the slice that ought to stay resident
+// across the whole tile loop is evicted repeatedly. It is the same trap
+// packed_ldw() fixes for the forward, except here the stride belongs to a
+// caller-owned buffer that cannot simply be padded (weights() and
+// weight_grad() contractually return dense (out_features, in_features)).
+//
+// The fix is to copy the K-slice into a small contiguous scratch first, at
+// which point its row stride is 64 B = exactly one cache line and it walks
+// all 64 sets. The copy is O(rows*16) against the tile loop's O(rows*B*16)
+// or O(rows*N*16), and the scratch is 16 KB at most realistic sizes, so it
+// stays L1-resident. Measured on this CPU (B=256, N=256): dX 83.5 -> 118.3
+// GFLOP/s at K=512, 69.4 -> 113.6 at K=1024.
+//
+// Caller-owned and preallocated like every other buffer here. Backends may
+// ignore it (scalar does); it must still be valid and this large.
+inline size_t pack_scratch_floats(int rows) { return (size_t)rows * 16; }
 
 // Ground truth: portable, ISA-independent, no intrinsics. Always built and
 // always available -- this is what every other backend is checked against.
@@ -44,8 +69,12 @@ namespace scalar {
 void gemm_xwt_f32(const float* X, const float* W, const float* bias,
                    float* Y, int B, int K, int N);
 
+// y(N) = x(K) @ W(N,K)^T [+ bias]. The batch-1 forward: see the note on
+// avx2::gemv_xwt_f32 for why this exists as a separate entry point.
+void gemv_xwt_f32(const float* x, const float* W, const float* bias, float* y, int K, int N);
+
 void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K,
-                  int N);
+                  int N, float* pack);
 
 void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B,
                         int K, int N);
@@ -71,7 +100,8 @@ void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias,
 // a power-of-two row stride (N=256 -> 1024 B) that hits only 4 of the L1's
 // 64 sets, thrashing an 8-way cache with 128 live lines. Transposing dY
 // first turns those strided broadcasts into sequential streams.
-void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N);
+void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
+                          float* pack);
 
 }  // namespace scalar
 
@@ -101,8 +131,20 @@ namespace avx2 {
 void gemm_xwt_f32(const float* X, const float* W, const float* bias,
                    float* Y, int B, int K, int N);
 
+// y(N) = x(K) @ W(N,K)^T [+ bias] -- the batch-1 forward, and the one shape
+// where the packed path above is the wrong answer. gemm_xwtp_f32 tiles 6
+// batch rows against 2 vector-columns for 12 independent FMA chains; with a
+// single row it degenerates to 2 chains, and it still walks Wp at a row
+// stride of ldWp floats, touching 64 B out of every row. This kernel instead
+// reduces along K over the *unpacked* W, so W is read strictly sequentially
+// (one pass, prefetcher-friendly) and 6 output rows give 12 chains again.
+// Measured at B=1: 24.3 -> 40.8 GFLOP/s on 512->512, 7.2 -> 26.4 on
+// 1024->1024. It loses from B=2 upward, so Linear::forward dispatches to it
+// only at batch == 1.
+void gemv_xwt_f32(const float* x, const float* W, const float* bias, float* y, int K, int N);
+
 void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K,
-                  int N);
+                  int N, float* pack);
 
 void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B,
                         int K, int N);
@@ -114,7 +156,8 @@ void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols
 void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias,
                     float* Y, int B, int K, int N, int ldWp);
 
-void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N);
+void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
+                          float* pack);
 
 }  // namespace avx2
 

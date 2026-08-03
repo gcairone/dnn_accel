@@ -32,9 +32,14 @@ Module::Module(const ModuleConfig& cfg, std::vector<Module*> inputs)
     for (auto* m : inputs_) num_leaves_ += m->num_leaves();
   }
 
+  // Only the first layer's input gradient is ever in question -- every other
+  // layer's feeds the one below it.
+  const bool own_input_grad_needed = !inputs_.empty() || cfg_.retain_input_grad;
+
   layers_.reserve(cfg_.layer_sizes.size() - 1);
   for (size_t i = 0; i + 1 < cfg_.layer_sizes.size(); i++) {
     LinearConfig lc;
+    lc.needs_input_grad = (i > 0) || own_input_grad_needed;
     lc.in_features = cfg_.layer_sizes[i];
     lc.out_features = cfg_.layer_sizes[i + 1];
     lc.max_batch = cfg_.max_batch;
@@ -52,7 +57,7 @@ Module::Module(const ModuleConfig& cfg, std::vector<Module*> inputs)
     concat_buf_.resize(mb * own_in);
   }
   if (!cfg_.inference_only) {
-    dx_own_.resize(mb * own_in);
+    if (own_input_grad_needed) dx_own_.resize(mb * own_in);
     if (!inputs_.empty()) {
       child_dgrad_bufs_.resize(inputs_.size());
       for (size_t c = 0; c < inputs_.size(); c++) {
@@ -112,7 +117,10 @@ void Module::backward(const float* dOut, int batch) {
   }
   // `cur` aliases the first layer's internal dx buffer, which the next
   // forward()/backward() call on that layer would clobber -- copy it out.
-  std::memcpy(dx_own_.data(), cur, sizeof(float) * dx_own_.size());
+  // Empty (and `cur` null) when the first layer was told not to bother.
+  if (!dx_own_.empty()) {
+    std::memcpy(dx_own_.data(), cur, sizeof(float) * dx_own_.size());
+  }
 
   if (!is_leaf()) {
     const int total_w = cfg_.layer_sizes.front();

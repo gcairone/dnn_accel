@@ -96,6 +96,9 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
   // optimizer step, so hiding it would flatter the result.
   std::vector<std::vector<float>> Wp(L);
   std::vector<int> ldWp(L);
+  int pack_rows = B;
+  for (int l = 0; l < L; l++) pack_rows = std::max(pack_rows, sizes[l + 1]);
+  std::vector<float> pack(simd::pack_scratch_floats(pack_rows));
   for (int l = 0; l < L; l++) {
     int in = sizes[l], out = sizes[l + 1];
     ldWp[l] = simd::packed_ldw(out);
@@ -144,11 +147,15 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
         inner, reps);
     phases.push_back({"bwd act L" + std::to_string(l), t, 0, 4.0 * B * out * 4});
   }
-  for (int l = L - 1; l >= 0; l--) {
+  // l > 0 only: a leaf module's first layer has nobody to hand an input
+  // gradient to, so Linear skips that GEMM entirely (LinearConfig::
+  // needs_input_grad). Timing it here would report work the real step -- the
+  // thing this file exists to model -- does not do.
+  for (int l = L - 1; l >= 1; l--) {
     int in = sizes[l], out = sizes[l + 1];
     double flops = 2.0 * B * in * out;
     double t = time_phase(
-        [&] { simd::gemm_dX_f32(dZ[l].data(), W[l].data(), dX[l].data(), B, in, out); }, inner, reps);
+        [&] { simd::gemm_dX_f32(dZ[l].data(), W[l].data(), dX[l].data(), B, in, out, pack.data()); }, inner, reps);
     phases.push_back({"bwd dX L" + std::to_string(l) + " (" + std::to_string(in) + "->" +
                         std::to_string(out) + ")",
                        t, flops, 0});
@@ -167,7 +174,7 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
     int in = sizes[l], out = sizes[l + 1];
     double flops = 2.0 * B * in * out;
     double t = time_phase(
-        [&] { simd::gemm_dW_accum_t_f32(Xc[l].data(), dZt[l].data(), dW[l].data(), B, in, out); },
+        [&] { simd::gemm_dW_accum_t_f32(Xc[l].data(), dZt[l].data(), dW[l].data(), B, in, out, pack.data()); },
         inner, reps);
     phases.push_back({"bwd dW L" + std::to_string(l) + " (" + std::to_string(in) + "->" +
                         std::to_string(out) + ")",

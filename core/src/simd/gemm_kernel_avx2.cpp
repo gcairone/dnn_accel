@@ -49,6 +49,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace fastmlp::simd::avx2 {
 
@@ -63,6 +64,14 @@ constexpr int kNTile = 16;  // must match packed_ldw()'s tile in the header
 
 constexpr int kBwdMR = 6;
 constexpr int kKTile = 16;  // kBwdKV(2) * kVW
+
+// Below this K the operand's natural row stride is under 1 KB, so a whole
+// tile's worth of rows fits in L1 without conflicting and copying the
+// K-slice into scratch is pure overhead (measured -6% on a 20->64 layer).
+// Above it, packing is worth up to +70%. See pack_scratch_floats().
+constexpr int kPackMinK = 256;
+
+constexpr int kGemvNR = 6;  // 6 output rows x 2 k-vectors = 12 FMA chains
 
 inline int min_int(int a, int b) { return a < b ? a : b; }
 
@@ -173,6 +182,49 @@ inline void xwtp_tile(const float* X, const float* Wp, __m256 bv0, __m256 bv1, f
   }
 }
 
+// --- batch-1 forward: y(N) = x(K) @ W(N,K)^T -----------------------------
+
+// NR output rows reduced along K at once. Unlike the packed tile this reads
+// W exactly as stored, so the whole matrix streams sequentially in one pass;
+// at batch 1 that matters more than the horizontal reductions cost, because
+// there is no batch reuse left to amortise anything against.
+template <int NR>
+inline void gemv_tile(const float* x, const float* W, const float* bias, float* y, int K, int n0) {
+  __m256 a0[NR], a1[NR];
+  for (int j = 0; j < NR; j++) {
+    a0[j] = _mm256_setzero_ps();
+    a1[j] = _mm256_setzero_ps();
+  }
+
+  int k = 0;
+  for (; k + 2 * kVW <= K; k += 2 * kVW) {
+    __m256 x0 = _mm256_loadu_ps(x + k);
+    __m256 x1 = _mm256_loadu_ps(x + k + kVW);
+    for (int j = 0; j < NR; j++) {
+      const float* w = W + (size_t)(n0 + j) * K + k;
+      a0[j] = _mm256_fmadd_ps(x0, _mm256_loadu_ps(w), a0[j]);
+      a1[j] = _mm256_fmadd_ps(x1, _mm256_loadu_ps(w + kVW), a1[j]);
+    }
+  }
+  if (k + kVW <= K) {
+    __m256 x0 = _mm256_loadu_ps(x + k);
+    for (int j = 0; j < NR; j++)
+      a0[j] = _mm256_fmadd_ps(x0, _mm256_loadu_ps(W + (size_t)(n0 + j) * K + k), a0[j]);
+    k += kVW;
+  }
+  if (k < K) {  // masked K-tail, same as every other kernel here
+    __m256i mask = lane_mask(K - k);
+    __m256 x0 = _mm256_maskload_ps(x + k, mask);
+    for (int j = 0; j < NR; j++)
+      a0[j] = _mm256_fmadd_ps(x0, _mm256_maskload_ps(W + (size_t)(n0 + j) * K + k, mask), a0[j]);
+  }
+
+  for (int j = 0; j < NR; j++) {
+    float v = hsum256(_mm256_add_ps(a0[j], a1[j]));
+    y[n0 + j] = bias ? v + bias[n0 + j] : v;
+  }
+}
+
 // --- backward dX: dX(B,K) = dY(B,N) @ W(N,K) -----------------------------
 
 // Two k-vectors per tile -- the hot path. The accumulators are two separate
@@ -180,19 +232,22 @@ inline void xwtp_tile(const float* X, const float* Wp, __m256 bv0, __m256 bv1, f
 // promoting them to registers and spills the tile to the stack, which
 // measured as a 2x regression (dX 112 -> 56 GFLOP/s on MNIST's 784->256).
 // Hence the deliberate duplication between this and dx_tile1 below.
+// `Wsrc`/`ldW` are the K-slice's location and row stride: either W itself at
+// stride K, or the packed 16-wide scratch at stride 16 (see kPackMinK).
 template <int MR>
-inline void dx_tile2(const float* dY, const float* W, float* dX, int b0, int K, int N, int k0) {
+inline void dx_tile2(const float* dY, const float* Wsrc, int ldW, float* dX, int b0, int K, int N,
+                      int k0) {
   __m256 a0[MR], a1[MR];
   for (int m = 0; m < MR; m++) {
     a0[m] = _mm256_setzero_ps();
     a1[m] = _mm256_setzero_ps();
   }
 
-  const float* w = W + k0;
+  const float* w = Wsrc;
   for (int n = 0; n < N; n++) {
     __m256 w0 = _mm256_loadu_ps(w);
     __m256 w1 = _mm256_loadu_ps(w + kVW);
-    w += K;
+    w += ldW;
     for (int m = 0; m < MR; m++) {
       __m256 dyv = _mm256_set1_ps(dY[(size_t)(b0 + m) * N + n]);
       a0[m] = _mm256_fmadd_ps(dyv, w0, a0[m]);
@@ -247,15 +302,16 @@ inline void dx_tile_masked(const float* dY, const float* W, float* dX, int b0, i
     _mm256_maskstore_ps(dX + (size_t)(b0 + m) * K + k0, mask, a[m]);
 }
 
-inline void dx_k_block2(const float* dY, const float* W, float* dX, int B, int K, int N, int k0) {
+inline void dx_k_block2(const float* dY, const float* Wsrc, int ldW, float* dX, int B, int K,
+                         int N, int k0) {
   int b0 = 0;
-  for (; b0 + kBwdMR <= B; b0 += kBwdMR) dx_tile2<kBwdMR>(dY, W, dX, b0, K, N, k0);
+  for (; b0 + kBwdMR <= B; b0 += kBwdMR) dx_tile2<kBwdMR>(dY, Wsrc, ldW, dX, b0, K, N, k0);
   switch (B - b0) {  // batch tail, still fully unrolled per case
-    case 5: dx_tile2<5>(dY, W, dX, b0, K, N, k0); break;
-    case 4: dx_tile2<4>(dY, W, dX, b0, K, N, k0); break;
-    case 3: dx_tile2<3>(dY, W, dX, b0, K, N, k0); break;
-    case 2: dx_tile2<2>(dY, W, dX, b0, K, N, k0); break;
-    case 1: dx_tile2<1>(dY, W, dX, b0, K, N, k0); break;
+    case 5: dx_tile2<5>(dY, Wsrc, ldW, dX, b0, K, N, k0); break;
+    case 4: dx_tile2<4>(dY, Wsrc, ldW, dX, b0, K, N, k0); break;
+    case 3: dx_tile2<3>(dY, Wsrc, ldW, dX, b0, K, N, k0); break;
+    case 2: dx_tile2<2>(dY, Wsrc, ldW, dX, b0, K, N, k0); break;
+    case 1: dx_tile2<1>(dY, Wsrc, ldW, dX, b0, K, N, k0); break;
     default: break;
   }
 }
@@ -294,9 +350,11 @@ inline void dx_k_block_masked(const float* dY, const float* W, float* dX, int B,
 // is why Linear::backward pays for the transpose.
 // Two k-vectors, the hot path. Separate a0/a1 arrays for the same reason as
 // dx_tile2 -- a 2D accumulator array gets spilled to the stack.
+// `Xsrc`/`ldX`: the X-cache's K-slice in place at stride K, or the packed
+// 16-wide scratch at stride 16 -- same choice dx_tile2 makes over W.
 template <int NR>
-inline void dw_tile_t2(const float* X, const float* dYt, float* dW, int n0, int B, int K, int N,
-                        int k0) {
+inline void dw_tile_t2(const float* Xsrc, int ldX, const float* dYt, float* dW, int n0, int B,
+                        int K, int N, int k0) {
   __m256 a0[NR], a1[NR];
   for (int j = 0; j < NR; j++) {
     const float* d = dW + (size_t)(n0 + j) * K + k0;
@@ -308,7 +366,7 @@ inline void dw_tile_t2(const float* X, const float* dYt, float* dW, int n0, int 
   for (int j = 0; j < NR; j++) dyt[j] = dYt + (size_t)(n0 + j) * B;
 
   for (int b = 0; b < B; b++) {
-    const float* x = X + (size_t)b * K + k0;
+    const float* x = Xsrc + (size_t)b * ldX;
     __m256 x0 = _mm256_loadu_ps(x);
     __m256 x1 = _mm256_loadu_ps(x + kVW);
     for (int j = 0; j < NR; j++) {
@@ -366,16 +424,17 @@ inline void dw_tile_t_masked(const float* X, const float* dYt, float* dW, int n0
     _mm256_maskstore_ps(dW + (size_t)(n0 + j) * K + k0, mask, a[j]);
 }
 
-inline void dw_t_k_block2(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                           int k0) {
+inline void dw_t_k_block2(const float* Xsrc, int ldX, const float* dYt, float* dW, int B, int K,
+                           int N, int k0) {
   int n0 = 0;
-  for (; n0 + kBwdMR <= N; n0 += kBwdMR) dw_tile_t2<kBwdMR>(X, dYt, dW, n0, B, K, N, k0);
+  for (; n0 + kBwdMR <= N; n0 += kBwdMR)
+    dw_tile_t2<kBwdMR>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0);
   switch (N - n0) {
-    case 5: dw_tile_t2<5>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 4: dw_tile_t2<4>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 3: dw_tile_t2<3>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 2: dw_tile_t2<2>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 1: dw_tile_t2<1>(X, dYt, dW, n0, B, K, N, k0); break;
+    case 5: dw_tile_t2<5>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
+    case 4: dw_tile_t2<4>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
+    case 3: dw_tile_t2<3>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
+    case 2: dw_tile_t2<2>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
+    case 1: dw_tile_t2<1>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
     default: break;
   }
 }
@@ -478,16 +537,52 @@ void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias, float* Y,
   }
 }
 
-void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K, int N) {
+void gemv_xwt_f32(const float* x, const float* W, const float* bias, float* y, int K, int N) {
+  int n0 = 0;
+  for (; n0 + kGemvNR <= N; n0 += kGemvNR) gemv_tile<kGemvNR>(x, W, bias, y, K, n0);
+  switch (N - n0) {
+    case 5: gemv_tile<5>(x, W, bias, y, K, n0); break;
+    case 4: gemv_tile<4>(x, W, bias, y, K, n0); break;
+    case 3: gemv_tile<3>(x, W, bias, y, K, n0); break;
+    case 2: gemv_tile<2>(x, W, bias, y, K, n0); break;
+    case 1: gemv_tile<1>(x, W, bias, y, K, n0); break;
+    default: break;
+  }
+}
+
+void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K, int N, float* pack) {
+  // Packing only pays if the slice is then reused by more than a tile or two,
+  // hence the batch check alongside the stride one.
+  const bool do_pack = pack != nullptr && K >= kPackMinK && B >= kBwdMR;
   int k0 = 0;
-  for (; k0 + kKTile <= K; k0 += kKTile) dx_k_block2(dY, W, dX, B, K, N, k0);
+  for (; k0 + kKTile <= K; k0 += kKTile) {
+    if (do_pack) {
+      for (int n = 0; n < N; n++) {
+        std::memcpy(pack + (size_t)n * kKTile, W + (size_t)n * K + k0, kKTile * sizeof(float));
+      }
+      dx_k_block2(dY, pack, kKTile, dX, B, K, N, k0);
+    } else {
+      dx_k_block2(dY, W + k0, K, dX, B, K, N, k0);
+    }
+  }
   for (; k0 + kVW <= K; k0 += kVW) dx_k_block1(dY, W, dX, B, K, N, k0);
   if (k0 < K) dx_k_block_masked(dY, W, dX, B, K, N, k0, lane_mask(K - k0));
 }
 
-void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N) {
+void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
+                          float* pack) {
+  const bool do_pack = pack != nullptr && K >= kPackMinK && N >= kBwdMR;
   int k0 = 0;
-  for (; k0 + kKTile <= K; k0 += kKTile) dw_t_k_block2(X, dYt, dW, B, K, N, k0);
+  for (; k0 + kKTile <= K; k0 += kKTile) {
+    if (do_pack) {
+      for (int b = 0; b < B; b++) {
+        std::memcpy(pack + (size_t)b * kKTile, X + (size_t)b * K + k0, kKTile * sizeof(float));
+      }
+      dw_t_k_block2(pack, kKTile, dYt, dW, B, K, N, k0);
+    } else {
+      dw_t_k_block2(X + k0, K, dYt, dW, B, K, N, k0);
+    }
+  }
   for (; k0 + kVW <= K; k0 += kVW) dw_t_k_block1(X, dYt, dW, B, K, N, k0);
   if (k0 < K) dw_t_k_block_masked(X, dYt, dW, B, K, N, k0, lane_mask(K - k0));
 }

@@ -4,6 +4,7 @@
 // shapes (K/N/B not multiples of the tile), and seeded random fuzz.
 #include "fastmlp/simd/gemm_kernel.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <random>
 #include <vector>
@@ -67,8 +68,9 @@ void check_gemm_dX(int B, int K, int N) {
   fill_pattern(dY, 9, 4);
   fill_pattern(W, 11, 5);
   std::vector<float> dX_scalar((size_t)B * K), dX_avx2((size_t)B * K);
-  scalar::gemm_dX_f32(dY.data(), W.data(), dX_scalar.data(), B, K, N);
-  avx2::gemm_dX_f32(dY.data(), W.data(), dX_avx2.data(), B, K, N);
+  std::vector<float> pack(pack_scratch_floats(std::max(B, N)));
+  scalar::gemm_dX_f32(dY.data(), W.data(), dX_scalar.data(), B, K, N, pack.data());
+  avx2::gemm_dX_f32(dY.data(), W.data(), dX_avx2.data(), B, K, N, pack.data());
   for (size_t i = 0; i < dX_scalar.size(); i++) assert_close(dX_scalar[i], dX_avx2[i]);
 }
 
@@ -158,8 +160,9 @@ void check_gemm_dW_t(int B, int K, int N) {
   dW_avx2 = dW_ref;
 
   scalar::gemm_dW_accum_f32(X.data(), dY.data(), dW_ref.data(), B, K, N);
-  scalar::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_scalar.data(), B, K, N);
-  avx2::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_avx2.data(), B, K, N);
+  std::vector<float> pack(pack_scratch_floats(std::max(B, N)));
+  scalar::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_scalar.data(), B, K, N, pack.data());
+  avx2::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_avx2.data(), B, K, N, pack.data());
 
   for (size_t i = 0; i < dW_ref.size(); i++) {
     assert_close(dW_scalar[i], dW_ref[i]);
@@ -167,7 +170,29 @@ void check_gemm_dW_t(int B, int K, int N) {
   }
 }
 
+// The batch-1 forward is a separate kernel with its own reduction order and
+// its own masked K-tail, and Linear::forward silently dispatches to it -- so
+// it needs checking against gemm_xwt_f32 on exactly the shapes it will see.
+void check_gemv_xwt(int K, int N, bool with_bias) {
+  std::vector<float> x((size_t)K), W((size_t)N * K), bias((size_t)N);
+  fill_pattern(x, 13, 6);
+  fill_pattern(W, 7, 3);
+  fill_pattern(bias, 5, 2);
+  const float* bias_ptr = with_bias ? bias.data() : nullptr;
+
+  std::vector<float> y_ref((size_t)N), y_scalar((size_t)N), y_avx2((size_t)N);
+  scalar::gemm_xwt_f32(x.data(), W.data(), bias_ptr, y_ref.data(), 1, K, N);
+  scalar::gemv_xwt_f32(x.data(), W.data(), bias_ptr, y_scalar.data(), K, N);
+  avx2::gemv_xwt_f32(x.data(), W.data(), bias_ptr, y_avx2.data(), K, N);
+  for (size_t i = 0; i < y_ref.size(); i++) {
+    assert_close(y_scalar[i], y_ref[i]);
+    assert_close(y_avx2[i], y_ref[i]);
+  }
+}
+
 void check_all(int B, int K, int N) {
+  check_gemv_xwt(K, N, /*with_bias=*/true);
+  check_gemv_xwt(K, N, /*with_bias=*/false);
   check_gemm_xwt(B, K, N, /*with_bias=*/true);
   check_gemm_xwt(B, K, N, /*with_bias=*/false);
   check_gemm_xwtp(B, K, N, /*with_bias=*/true);
@@ -211,6 +236,20 @@ TEST(tail_and_edge_shapes) {
       }
     }
   }
+}
+
+TEST(packed_k_slice_shapes) {
+  // gemm_dX_f32/gemm_dW_accum_t_f32 only copy their K-slice into the L1
+  // scratch above kPackMinK (K=256) and with enough rows to reuse it, and
+  // the tail/fuzz shapes above are all far below that -- so without these
+  // the packed branch would never execute under test. Straddles the
+  // threshold in both directions, with and without a K-remainder.
+  Shape shapes[] = {
+      {256, 512, 256}, {64, 512, 128}, {256, 255, 64}, {256, 257, 64},
+      {8, 512, 64},    {5, 512, 64},   {256, 520, 7},  {256, 512, 5},
+      {1, 512, 64},    {256, 1024, 32},
+  };
+  for (auto& s : shapes) check_all(s.B, s.K, s.N);
 }
 
 TEST(randomized_fuzz) {

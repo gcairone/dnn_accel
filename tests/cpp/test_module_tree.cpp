@@ -9,6 +9,7 @@
 #include "test_harness.hpp"
 
 using fastmlp::ActivationKind;
+using fastmlp::Linear;
 using fastmlp::Module;
 using fastmlp::ModuleConfig;
 using fastmlp::ShapeError;
@@ -32,6 +33,7 @@ TEST(scenario1_single_leaf) {
   cfg.activation = ActivationKind::Sigmoid;
   cfg.max_batch = 128;
   cfg.seed = 1;
+  cfg.retain_input_grad = true;  // leaf: keep the dX this test asserts on
   Module model(cfg);
 
   ASSERT_TRUE(model.is_leaf());
@@ -49,6 +51,41 @@ TEST(scenario1_single_leaf) {
   ASSERT_TRUE(model.own_input_grad() != nullptr);
 }
 
+// The default: a leaf's own input gradient goes nowhere, so it is not
+// computed at all. Everything else about backward() must be unaffected --
+// weight gradients in particular, since that is the whole point of the pass.
+TEST(leaf_skips_unused_input_grad_but_still_accumulates_weight_grads) {
+  ModuleConfig cfg;
+  cfg.layer_sizes = {20, 64, 32, 1};
+  cfg.activation = ActivationKind::Sigmoid;
+  cfg.max_batch = 128;
+  cfg.seed = 1;
+  Module lean(cfg);
+  cfg.retain_input_grad = true;
+  Module full(cfg);
+
+  std::vector<float> x(4 * 20);
+  fill_pattern(x, 9, 4);
+  std::vector<float> dOut(4 * 1, 1.0f);
+
+  lean.forward({x.data()}, 4);
+  lean.backward(dOut.data(), 4);
+  full.forward({x.data()}, 4);
+  full.backward(dOut.data(), 4);
+
+  ASSERT_TRUE(lean.own_input_grad() == nullptr);
+  ASSERT_TRUE(full.own_input_grad() != nullptr);
+
+  // Same seed, same input: every weight gradient must be bit-identical.
+  for (size_t l = 0; l < lean.layers().size(); l++) {
+    const Linear& a = lean.layers()[l];
+    const Linear& b = full.layers()[l];
+    size_t n = (size_t)a.in_features() * a.out_features();
+    for (size_t i = 0; i < n; i++) ASSERT_EQ(a.weight_grad()[i], b.weight_grad()[i]);
+    for (int i = 0; i < a.out_features(); i++) ASSERT_EQ(a.bias_grad()[i], b.bias_grad()[i]);
+  }
+}
+
 // --- usages.md scenario 2: two-branch tree (ex2's shapes) ---------------
 TEST(scenario2_two_branch_tree_shapes) {
   ModuleConfig enc_img_cfg;
@@ -56,6 +93,7 @@ TEST(scenario2_two_branch_tree_shapes) {
   enc_img_cfg.activation = ActivationKind::ReLU;
   enc_img_cfg.max_batch = 64;
   enc_img_cfg.seed = 10;
+  enc_img_cfg.retain_input_grad = true;
   Module enc_img(enc_img_cfg);
 
   ModuleConfig enc_meta_cfg;
@@ -63,6 +101,7 @@ TEST(scenario2_two_branch_tree_shapes) {
   enc_meta_cfg.activation = ActivationKind::ReLU;
   enc_meta_cfg.max_batch = 64;
   enc_meta_cfg.seed = 11;
+  enc_meta_cfg.retain_input_grad = true;
   Module enc_meta(enc_meta_cfg);
 
   ModuleConfig model_cfg;
@@ -97,6 +136,7 @@ TEST(scenario3_three_level_tree_gradient_check) {
   enc_a_cfg.activation = ActivationKind::Sigmoid;
   enc_a_cfg.max_batch = 256;
   enc_a_cfg.seed = 20;
+  enc_a_cfg.retain_input_grad = true;  // the FD oracle below reads it
   ModuleConfig enc_b_cfg = enc_a_cfg;
   enc_b_cfg.seed = 21;
   ModuleConfig enc_c_cfg;
@@ -104,6 +144,7 @@ TEST(scenario3_three_level_tree_gradient_check) {
   enc_c_cfg.activation = ActivationKind::Sigmoid;
   enc_c_cfg.max_batch = 256;
   enc_c_cfg.seed = 22;
+  enc_c_cfg.retain_input_grad = true;
 
   Module enc_a(enc_a_cfg), enc_b(enc_b_cfg), enc_c(enc_c_cfg);
 
