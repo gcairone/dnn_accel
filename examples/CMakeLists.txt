@@ -10,3 +10,11 @@ fastmlp_apply_arch_flags(two_moons_cpp)
 add_executable(mnist_cpp mnist/train_cpp.cpp)
 target_link_libraries(mnist_cpp PRIVATE fastmlp_core)
 fastmlp_apply_arch_flags(mnist_cpp)
+
+add_executable(tree_regression_cpp tree_regression/train_cpp.cpp)
+target_link_libraries(tree_regression_cpp PRIVATE fastmlp_core)
+fastmlp_apply_arch_flags(tree_regression_cpp)
+
+add_executable(deep_mlp_cpp deep_mlp/train_cpp.cpp)
+target_link_libraries(deep_mlp_cpp PRIVATE fastmlp_core)
+fastmlp_apply_arch_flags(deep_mlp_cpp)

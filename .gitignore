@@ -20,6 +20,8 @@ __pycache__/
 # Datasets generated on demand by examples/*/{generate_data,prepare_data}.py
 examples/two_moons/data/
 examples/mnist/data/
+examples/tree_regression/data/
+examples/deep_mlp/data/
 
 # Claude Code local settings (machine-specific permissions, not project config)
 .claude/settings.local.json

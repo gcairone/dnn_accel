@@ -25,6 +25,8 @@ and [`benchmarks/cpp/results.md`](benchmarks/cpp/results.md).
 | `[512,128,64,1]` B=64 | 405 us/step | 771 us/step | **1.90x** |
 | real MNIST, `[784,256,128,10]` B=128, Adam | 3012 us/step | 3991 us/step | **1.33x** |
 | `[512,256,128,1]` B=256 | 4083 us/step | 3241 us/step | 0.79x (still losing) |
+| tree (`MLP(inputs=[MLP,MLP])`), B=64, Adam | 80 us/step | 1085 us/step | **13.5x** |
+| deep, 6 layers `[20,48,48,48,24,12,1]` B=128, Adam | 502 us/step | 1305 us/step | **2.6x** |
 
 ## What's in scope
 
@@ -85,17 +87,26 @@ docker exec fastmlp-dev bash -c '
 '
 ```
 
-**Real end-to-end training demos** (two-moons and real MNIST, each run
-through the C++ core directly, the Python bindings, and PyTorch — see
+**Real end-to-end training demos** (four tasks — two-moons, real MNIST, a
+two-branch tree (`fm.MLP(inputs=[MLP, MLP])`), and a single deeper 6-layer
+MLP — each run through the C++ core directly, the Python bindings, and
+PyTorch, so behavior and per-iteration timing are directly comparable; see
 `examples/`):
 
 ```bash
 docker exec fastmlp-dev bash -c '
   cd /workspace
-  python3 examples/two_moons/generate_data.py && python3 examples/mnist/prepare_data.py
+  python3 examples/two_moons/generate_data.py
+  python3 examples/mnist/prepare_data.py
+  python3 examples/tree_regression/generate_data.py
+  python3 examples/deep_mlp/generate_data.py
   cmake -S . -B build-examples -DFASTMLP_SIMD_BACKEND=AVX2 -DFASTMLP_BUILD_EXAMPLES=ON -DFASTMLP_BUILD_TESTS=OFF -DFASTMLP_BUILD_PYTHON=OFF
   cmake --build build-examples -j$(nproc)
-  ./build-examples/examples/two_moons_cpp && python3 examples/two_moons/train_fastmlp.py && python3 examples/two_moons/train_torch.py
+  for t in two_moons mnist tree_regression deep_mlp; do
+    ./build-examples/examples/${t}_cpp
+    python3 examples/$t/train_fastmlp.py
+    python3 examples/$t/train_torch.py
+  done
 '
 ```
 
@@ -151,13 +162,18 @@ call returns a view into a buffer fastmlp owns and reuses; copy it
 
 More scenarios (deep trees, `inference_only`, dict-style calls for named
 branches): [`usages.md`](usages.md). Working, runnable, three-implementation
-versions of the two examples above: [`examples/`](examples/).
+(C++ core / Python bindings / PyTorch) versions of both patterns above, plus
+two more architectures — a two-branch tree where the branches are load-bearing
+(`examples/tree_regression/`, the task genuinely needs both inputs) and a
+single deeper 6-layer MLP (`examples/deep_mlp/`) — all in [`examples/`](examples/).
 
 ## Using the library (C++ core directly)
 
 The core has zero Python/nanobind dependency and is independently
-buildable/testable (`core/`, `tests/cpp/`). See `examples/two_moons/train_cpp.cpp`
-and `examples/mnist/train_cpp.cpp` for complete, working programs against the
-raw `fastmlp::Module`/`fastmlp::SGD`/`fastmlp::Adam` API — including the loss
+buildable/testable (`core/`, `tests/cpp/`). See any `examples/*/train_cpp.cpp`
+for a complete, working program against the raw
+`fastmlp::Module`/`fastmlp::SGD`/`fastmlp::Adam` API — including the loss
 gradient, since fastmlp_core has no loss-function concept (that's the
 caller's job in both the C++ and Python API, same boundary in both cases).
+`examples/tree_regression/train_cpp.cpp` is the one to read for the tree
+case: `Module(root_cfg, {&enc_a, &enc_b})`.
