@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <vector>
 
 namespace fastmlp::example {
@@ -63,5 +64,29 @@ class StepTimer {
   double t0_ = 0.0;
   std::vector<double> samples_;
 };
+
+// For benchmarks that call the SAME thing repeatedly with nothing else
+// happening in between (inference throughput, not a live training loop) --
+// runs `fn` `inner_iters` times back-to-back per sample, `outer_reps`
+// samples, returns the median per-call seconds. Identical methodology to
+// benchmarks/cpp/bench_common.hpp's function of the same name, duplicated
+// here for the same reason pin_to_core0() is (keeping examples/ independent
+// of benchmarks/cpp/).
+inline double median_time_per_call(const std::function<void()>& fn, int warmup_blocks,
+                                    int inner_iters, int outer_reps) {
+  for (int b = 0; b < warmup_blocks; b++) {
+    for (int i = 0; i < inner_iters; i++) fn();
+  }
+  std::vector<double> samples((size_t)outer_reps);
+  for (int r = 0; r < outer_reps; r++) {
+    double t0 = now_sec();
+    for (int i = 0; i < inner_iters; i++) fn();
+    double t1 = now_sec();
+    samples[r] = (t1 - t0) / inner_iters;
+  }
+  std::sort(samples.begin(), samples.end());
+  int n = outer_reps;
+  return (n % 2) ? samples[n / 2] : 0.5 * (samples[n / 2 - 1] + samples[n / 2]);
+}
 
 }  // namespace fastmlp::example

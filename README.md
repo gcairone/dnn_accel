@@ -28,6 +28,14 @@ and [`benchmarks/cpp/results.md`](benchmarks/cpp/results.md).
 | tree (`MLP(inputs=[MLP,MLP])`), B=64, Adam | 80 us/step | 1085 us/step | **13.5x** |
 | deep, 6 layers `[20,48,48,48,24,12,1]` B=128, Adam | 502 us/step | 1305 us/step | **2.6x** |
 
+Inference only (forward pass, `examples/inference/`, 7 architectures x
+batch 1/128 — full table in
+[`examples/inference/results.md`](examples/inference/results.md)): fastmlp
+wins on **every** architecture and batch size measured, from 1.02x
+(`[784,256,128,10]` at batch=1, real compute dominates) up to **155x**
+(`[8,16,8,1]` at batch=1 — PyTorch's ~30-38us/call dispatch overhead is a
+fixed cost regardless of model size; fastmlp has no such floor).
+
 ## What's in scope
 
 `Linear` layers, four activations (ReLU/sigmoid/tanh/identity), tree-only
@@ -107,6 +115,19 @@ docker exec fastmlp-dev bash -c '
     python3 examples/$t/train_fastmlp.py
     python3 examples/$t/train_torch.py
   done
+'
+```
+
+**Inference-only throughput** (7 architectures x batch 1/128, no data files
+needed since only forward-pass cost is measured — see
+[`examples/inference/results.md`](examples/inference/results.md)):
+
+```bash
+docker exec fastmlp-dev bash -c '
+  cd /workspace
+  ./build-examples/examples/inference_cpp
+  python3 examples/inference/infer_fastmlp.py
+  python3 examples/inference/infer_torch.py
 '
 ```
 

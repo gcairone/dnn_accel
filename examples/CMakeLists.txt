@@ -18,3 +18,7 @@ fastmlp_apply_arch_flags(tree_regression_cpp)
 add_executable(deep_mlp_cpp deep_mlp/train_cpp.cpp)
 target_link_libraries(deep_mlp_cpp PRIVATE fastmlp_core)
 fastmlp_apply_arch_flags(deep_mlp_cpp)
+
+add_executable(inference_cpp inference/infer_cpp.cpp)
+target_link_libraries(inference_cpp PRIVATE fastmlp_core)
+fastmlp_apply_arch_flags(inference_cpp)
