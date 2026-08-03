@@ -6,7 +6,8 @@ CPU (AMD Ryzen 7 4800H / Zen 2), single-threaded. The point: PyTorch's CPU
 path pays for a computational graph, dynamic dispatch, and a general
 thread-pool BLAS that a small-to-medium, statically-shaped MLP doesn't need.
 This library skips all of that and, on this specific CPU, beats PyTorch's
-single-thread training throughput on most shapes measured so far.
+single-thread throughput on most shapes measured so far — training and
+inference alike.
 
 Full design rationale: [`idea.md`](idea.md). Intended API by example:
 [`usages.md`](usages.md). Repo layout, file-by-file rationale, and
@@ -15,26 +16,20 @@ into all three.
 
 ## Current numbers
 
-Single-core, pinned, `torch.set_num_threads(1)`. Full detail and honest
-caveats in [`benchmarks/python/results.md`](benchmarks/python/results.md)
-and [`benchmarks/cpp/results.md`](benchmarks/cpp/results.md).
+Single-core, pinned, `torch.set_num_threads(1)`. Headline results only —
+full tables, methodology, and honest caveats live next to the code that
+produced them:
+[`benchmarks/cpp/results.md`](benchmarks/cpp/results.md) (kernel-level),
+[`benchmarks/python/results.md`](benchmarks/python/results.md) (training,
+the acceptance benchmark), [`examples/inference/results.md`](examples/inference/results.md)
+(inference-only).
 
-| task | fastmlp | PyTorch | speedup |
+| | fastmlp | PyTorch | speedup |
 |---|---|---|---|
-| `[20,64,32,1]` B=128 (small) | 47 us/step | 408 us/step | **8.65x** |
-| `[512,128,64,1]` B=64 | 405 us/step | 771 us/step | **1.90x** |
-| real MNIST, `[784,256,128,10]` B=128, Adam | 3012 us/step | 3991 us/step | **1.33x** |
-| `[512,256,128,1]` B=256 | 4083 us/step | 3241 us/step | 0.79x (still losing) |
-| tree (`MLP(inputs=[MLP,MLP])`), B=64, Adam | 80 us/step | 1085 us/step | **13.5x** |
-| deep, 6 layers `[20,48,48,48,24,12,1]` B=128, Adam | 502 us/step | 1305 us/step | **2.6x** |
-
-Inference only (forward pass, `examples/inference/`, 7 architectures x
-batch 1/128 — full table in
-[`examples/inference/results.md`](examples/inference/results.md)): fastmlp
-wins on **every** architecture and batch size measured, from 1.02x
-(`[784,256,128,10]` at batch=1, real compute dominates) up to **155x**
-(`[8,16,8,1]` at batch=1 — PyTorch's ~30-38us/call dispatch overhead is a
-fixed cost regardless of model size; fastmlp has no such floor).
+| training, `[20,64,32,1]` B=128 | 47 us/step | 408 us/step | **8.65x** |
+| training, `[512,256,128,1]` B=256 | 4083 us/step | 3241 us/step | 0.79x (still losing) |
+| inference, `[8,16,8,1]` B=1 | 0.22 us/call | 33.6 us/call | **155x** |
+| inference, `[784,256,128,10]` B=1 | 22.6 us/call | 33.4 us/call | 1.48x (near parity) |
 
 ## What's in scope
 
@@ -82,9 +77,9 @@ what produces `python/fastmlp/_fastmlp*.so`):
 docker exec fastmlp-dev bash -c 'cd /workspace && python3 -m pytest tests/python -q'
 ```
 
-**Benchmarks** (own build dirs, so rebuilding them never clobbers the
-shipped extension — see the project notes if you want to know why there are four
-build directories in this repo):
+**Benchmarks** (own build dir, so rebuilding it never clobbers the shipped
+extension — see the project notes if you want to know why there are four build
+directories in this repo):
 
 ```bash
 docker exec fastmlp-dev bash -c '
@@ -95,40 +90,24 @@ docker exec fastmlp-dev bash -c '
 '
 ```
 
-**Real end-to-end training demos** (four tasks — two-moons, real MNIST, a
-two-branch tree (`fm.MLP(inputs=[MLP, MLP])`), and a single deeper 6-layer
-MLP — each run through the C++ core directly, the Python bindings, and
-PyTorch, so behavior and per-iteration timing are directly comparable; see
-`examples/`):
+**Examples** (`examples/`, its own build dir): every subdirectory follows
+the same pattern — an optional one-time data-prep script
+(`generate_data.py`/`prepare_data.py`), then a C++ program and two Python
+scripts running the identical architecture/data through the C++ core, the
+Python bindings, and PyTorch, so timings are directly comparable. One build
+covers all of them; see each directory (or the project notes' layout section)
+for what's currently there.
 
 ```bash
 docker exec fastmlp-dev bash -c '
   cd /workspace
-  python3 examples/two_moons/generate_data.py
-  python3 examples/mnist/prepare_data.py
-  python3 examples/tree_regression/generate_data.py
-  python3 examples/deep_mlp/generate_data.py
+  for f in examples/*/generate_data.py examples/*/prepare_data.py; do [ -f "$f" ] && python3 "$f"; done
   cmake -S . -B build-examples -DFASTMLP_SIMD_BACKEND=AVX2 -DFASTMLP_BUILD_EXAMPLES=ON -DFASTMLP_BUILD_TESTS=OFF -DFASTMLP_BUILD_PYTHON=OFF
   cmake --build build-examples -j$(nproc)
-  for t in two_moons mnist tree_regression deep_mlp; do
-    ./build-examples/examples/${t}_cpp
-    python3 examples/$t/train_fastmlp.py
-    python3 examples/$t/train_torch.py
-  done
 '
-```
-
-**Inference-only throughput** (7 architectures x batch 1/128, no data files
-needed since only forward-pass cost is measured — see
-[`examples/inference/results.md`](examples/inference/results.md)):
-
-```bash
-docker exec fastmlp-dev bash -c '
-  cd /workspace
-  ./build-examples/examples/inference_cpp
-  python3 examples/inference/infer_fastmlp.py
-  python3 examples/inference/infer_torch.py
-'
+# then run whichever one you want, e.g.:
+docker exec fastmlp-dev bash -c 'cd /workspace && ./build-examples/examples/mnist_cpp'
+docker exec fastmlp-dev bash -c 'cd /workspace && python3 examples/inference/infer_torch.py'
 ```
 
 ## Using the library (Python)
@@ -182,19 +161,16 @@ call returns a view into a buffer fastmlp owns and reuses; copy it
 (`.copy()`) before the next call if you need it to survive one.
 
 More scenarios (deep trees, `inference_only`, dict-style calls for named
-branches): [`usages.md`](usages.md). Working, runnable, three-implementation
-(C++ core / Python bindings / PyTorch) versions of both patterns above, plus
-two more architectures — a two-branch tree where the branches are load-bearing
-(`examples/tree_regression/`, the task genuinely needs both inputs) and a
-single deeper 6-layer MLP (`examples/deep_mlp/`) — all in [`examples/`](examples/).
+branches): [`usages.md`](usages.md). Runnable, three-implementation versions
+of these and more architectures: [`examples/`](examples/).
 
 ## Using the library (C++ core directly)
 
 The core has zero Python/nanobind dependency and is independently
 buildable/testable (`core/`, `tests/cpp/`). See any `examples/*/train_cpp.cpp`
-for a complete, working program against the raw
-`fastmlp::Module`/`fastmlp::SGD`/`fastmlp::Adam` API — including the loss
-gradient, since fastmlp_core has no loss-function concept (that's the
+or `examples/*/infer_cpp.cpp` for a complete, working program against the
+raw `fastmlp::Module`/`fastmlp::SGD`/`fastmlp::Adam` API — including the
+loss gradient, since fastmlp_core has no loss-function concept (that's the
 caller's job in both the C++ and Python API, same boundary in both cases).
 `examples/tree_regression/train_cpp.cpp` is the one to read for the tree
 case: `Module(root_cfg, {&enc_a, &enc_b})`.
