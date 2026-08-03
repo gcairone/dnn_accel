@@ -56,7 +56,10 @@ int main() {
   // classifier, the classic single-hidden-layer MNIST baseline, a deeper
   // MNIST-style classifier, a mid-size tabular/feature classifier, a wide
   // shallow net), plus one deliberately unusual shape (deep_narrow) for
-  // variety.
+  // variety, plus square_WxD (width W in {64,128,256,512}, depth 1 or 2
+  // hidden->hidden layers, in_features==out_features==W throughout) --
+  // a clean width/depth sweep at equal width, isolating how each scales
+  // independently of the mixed-width shapes above.
   std::vector<Arch> archs = {
       {"tiny_tabular", {8, 16, 8, 1}},
       {"small_classifier", {20, 64, 32, 1}},
@@ -65,6 +68,14 @@ int main() {
       {"medium_classifier", {128, 256, 128, 64, 10}},
       {"wide_shallow", {100, 1024, 10}},
       {"deep_narrow", {64, 64, 64, 64, 64, 64, 64, 64, 64, 1}},
+      {"square_64x2", {64, 64}},
+      {"square_64x3", {64, 64, 64}},
+      {"square_128x2", {128, 128}},
+      {"square_128x3", {128, 128, 128}},
+      {"square_256x2", {256, 256}},
+      {"square_256x3", {256, 256, 256}},
+      {"square_512x2", {512, 512}},
+      {"square_512x3", {512, 512, 512}},
   };
 
   std::printf("%-18s %9s %6s %10s %12s\n", "arch", "params", "batch", "us/call", "infer/s");

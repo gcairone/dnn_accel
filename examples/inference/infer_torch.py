@@ -23,6 +23,10 @@ torch.set_num_threads(1)
 MAX_BATCH = 128
 WARMUP_BLOCKS, INNER_ITERS, OUTER_REPS = 3, 200, 7
 
+# Mostly architectures one would actually encounter, plus one deliberately
+# unusual shape (deep_narrow) for variety, plus square_WxD (width W in
+# {64,128,256,512}, depth 2 or 3 entries in layer_sizes i.e. 1 or 2 hidden
+# layers, in_features==out_features==W throughout) -- see infer_cpp.cpp.
 ARCHITECTURES = [
     ("tiny_tabular", [8, 16, 8, 1]),
     ("small_classifier", [20, 64, 32, 1]),
@@ -31,6 +35,10 @@ ARCHITECTURES = [
     ("medium_classifier", [128, 256, 128, 64, 10]),
     ("wide_shallow", [100, 1024, 10]),
     ("deep_narrow", [64] * 9 + [1]),
+] + [
+    (f"square_{x}x{d}", [x] * d)
+    for x in (64, 128, 256, 512)
+    for d in (2, 3)
 ]
 
 
