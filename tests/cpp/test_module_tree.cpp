@@ -305,6 +305,64 @@ TEST(scenario5_inference_only_tree) {
 }
 
 // --- robustness: leaf_inputs count mismatch -----------------------------
+// Per-layer activations: the module must behave exactly like the equivalent
+// hand-built chain of Linear layers (same per-layer seeds, seed + i), forward
+// and backward, bit for bit -- it is the same code, only wired by Module.
+TEST(per_layer_activations_match_manual_linear_chain) {
+  const std::vector<int> sizes = {7, 12, 9, 5};
+  const std::vector<ActivationKind> acts = {ActivationKind::GELU, ActivationKind::Tanh,
+                                            ActivationKind::Identity};
+  const int B = 6;
+  ModuleConfig cfg;
+  cfg.layer_sizes = sizes;
+  cfg.activations = acts;
+  cfg.max_batch = B;
+  cfg.seed = 900;
+  cfg.retain_input_grad = true;
+  Module model(cfg);
+  for (size_t i = 0; i < acts.size(); i++) ASSERT_TRUE(model.layers()[i].activation() == acts[i]);
+
+  std::vector<Linear> chain;
+  chain.reserve(acts.size());
+  for (size_t i = 0; i < acts.size(); i++) {
+    fastmlp::LinearConfig lc;
+    lc.in_features = sizes[i];
+    lc.out_features = sizes[i + 1];
+    lc.max_batch = B;
+    lc.activation = acts[i];
+    lc.seed = 900 + i;
+    chain.emplace_back(lc);
+  }
+
+  std::vector<float> x(B * 7), dOut(B * 5);
+  fill_pattern(x, 9, 4);
+  fill_pattern(dOut, 7, 3);
+
+  const float* y_mod = model.forward({x.data()}, B);
+  const float* cur = x.data();
+  for (auto& l : chain) cur = l.forward(cur, B);
+  for (int i = 0; i < B * 5; i++) ASSERT_EQ(y_mod[i], cur[i]);
+
+  model.backward(dOut.data(), B);
+  const float* g = dOut.data();
+  for (auto it = chain.rbegin(); it != chain.rend(); ++it) g = it->backward(g, B);
+  for (int i = 0; i < B * 7; i++) ASSERT_EQ(model.own_input_grad()[i], g[i]);
+  for (size_t l = 0; l < chain.size(); l++) {
+    int nW = sizes[l] * sizes[l + 1];
+    for (int j = 0; j < nW; j++) ASSERT_EQ(model.layers()[l].weight_grad()[j], chain[l].weight_grad()[j]);
+  }
+}
+
+TEST(activations_list_length_mismatch_throws) {
+  ModuleConfig cfg;
+  cfg.layer_sizes = {4, 8, 2};
+  cfg.activations = {ActivationKind::ReLU};  // 2 layers, 1 activation
+  cfg.max_batch = 4;
+  ASSERT_THROWS(Module{cfg});
+  cfg.activations = {ActivationKind::ReLU, ActivationKind::ReLU, ActivationKind::ReLU};
+  ASSERT_THROWS(Module{cfg});
+}
+
 TEST(mismatched_leaf_input_count_throws) {
   ModuleConfig leaf_cfg;
   leaf_cfg.layer_sizes = {4, 8};

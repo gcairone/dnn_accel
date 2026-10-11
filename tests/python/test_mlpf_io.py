@@ -96,3 +96,17 @@ def test_loaded_model_has_no_reconstructed_children(tmp_path):
     loaded = fm.MLP.load(path)
     assert loaded.inputs == []
     assert loaded(np.random.rand(4, 8).astype(np.float32), np.random.rand(4, 8).astype(np.float32)).shape == (4, 1)
+
+
+def test_mixed_activations_survive_roundtrip(tmp_path):
+    enc = fm.MLP([5, 8, 4], activation=["gelu", "elu"], max_batch=8, seed=1)
+    model = fm.MLP([4, 6, 2], activation="leaky_relu", output_activation="identity",
+                   inputs=[enc], max_batch=8, seed=2)
+    x = np.random.rand(3, 5).astype(np.float32)
+    pred = model(x).copy()
+
+    path = str(tmp_path / "mixed.mlpf")
+    model.save(path)
+    loaded = fm.MLP.load(path)
+    assert loaded.activations == ["leaky_relu", "identity"]
+    assert np.array_equal(pred, loaded(x))

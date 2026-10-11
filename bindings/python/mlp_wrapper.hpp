@@ -8,12 +8,14 @@
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "fastmlp/errors.hpp"
@@ -25,11 +27,44 @@ namespace nb = nanobind;
 namespace fastmlp_py {
 
 inline fastmlp::ActivationKind activation_from_str(const std::string& s) {
-  if (s == "relu") return fastmlp::ActivationKind::ReLU;
-  if (s == "sigmoid") return fastmlp::ActivationKind::Sigmoid;
-  if (s == "tanh") return fastmlp::ActivationKind::Tanh;
-  if (s == "identity") return fastmlp::ActivationKind::Identity;
-  throw std::invalid_argument("fastmlp: unknown activation '" + s + "'");
+  auto k = fastmlp::activation_from_name(s);
+  if (!k) {
+    throw std::invalid_argument("fastmlp: unknown activation '" + s + "' (valid: " +
+                                 fastmlp::activation_names_list() + ")");
+  }
+  return *k;
+}
+
+// `activation=` is either one name for every layer or a list with one name
+// per layer; `output_activation=` overrides just the last layer of the
+// one-name form (the common "relu hidden, linear output" case). Giving both a
+// list and output_activation would be two sources of truth for the last
+// layer, so that is an error rather than a precedence rule to remember.
+using ActivationArg = std::variant<std::string, std::vector<std::string>>;
+
+inline void resolve_activations(const ActivationArg& activation,
+                                 const std::optional<std::string>& output_activation,
+                                 fastmlp::ModuleConfig& cfg) {
+  // < 2 sizes: let Module's own ShapeError report it.
+  const size_t n_layers = cfg.layer_sizes.size() < 2 ? 0 : cfg.layer_sizes.size() - 1;
+  if (const auto* names = std::get_if<std::vector<std::string>>(&activation)) {
+    if (output_activation) {
+      throw std::invalid_argument(
+          "fastmlp: pass either a list of activations or output_activation, not both");
+    }
+    if (names->size() != n_layers) {
+      throw std::invalid_argument("fastmlp: activation list has " + std::to_string(names->size()) +
+                                   " entries, expected one per layer (" +
+                                   std::to_string(n_layers) + ")");
+    }
+    for (const auto& n : *names) cfg.activations.push_back(activation_from_str(n));
+    return;
+  }
+  cfg.activation = activation_from_str(std::get<std::string>(activation));
+  if (output_activation && n_layers > 0) {
+    cfg.activations.assign(n_layers, cfg.activation);
+    cfg.activations.back() = activation_from_str(*output_activation);
+  }
 }
 
 // Input arrays accept both writable and read-only NumPy arrays (Scalar is
@@ -58,9 +93,10 @@ using OutArray = nb::ndarray<nb::numpy, const float>;
 // this object's existing Python wrapper unconditionally.
 class MLP {
  public:
-  MLP(std::vector<int> layers, const std::string& activation, int max_batch,
+  MLP(std::vector<int> layers, const ActivationArg& activation, int max_batch,
       std::vector<std::shared_ptr<MLP>> inputs, bool inference_only,
-      std::optional<std::string> name, std::optional<uint64_t> seed)
+      std::optional<std::string> name, std::optional<uint64_t> seed,
+      std::optional<std::string> output_activation)
       : child_refs_(std::move(inputs)), own_name_(std::move(name)) {
     std::vector<fastmlp::Module*> raw_inputs;
     raw_inputs.reserve(child_refs_.size());
@@ -68,7 +104,7 @@ class MLP {
 
     fastmlp::ModuleConfig cfg;
     cfg.layer_sizes = std::move(layers);
-    cfg.activation = activation_from_str(activation);
+    resolve_activations(activation, output_activation, cfg);
     cfg.max_batch = max_batch;
     cfg.inference_only = inference_only;
     cfg.seed = seed;
@@ -223,6 +259,11 @@ class MLP {
   int max_batch() const { return module_ptr_->max_batch(); }
   bool inference_only() const { return module_ptr_->inference_only(); }
   bool is_leaf() const { return module_ptr_->is_leaf(); }
+  std::vector<std::string> activations() const {
+    std::vector<std::string> out;
+    for (const auto& l : module_ptr_->layers()) out.push_back(fastmlp::activation_name(l.activation()));
+    return out;
+  }
 
   fastmlp::Module& module() { return *module_ptr_; }
 

@@ -1,6 +1,7 @@
 #include "fastmlp/module.hpp"
 
 #include <cstring>
+#include <string>
 
 #include "fastmlp/errors.hpp"
 
@@ -19,6 +20,12 @@ Module::Module(const ModuleConfig& cfg, std::vector<Module*> inputs)
   if (cfg_.layer_sizes.size() < 2) {
     throw ShapeError("Module: layer_sizes must have at least 2 entries");
   }
+  const size_t n_layers = cfg_.layer_sizes.size() - 1;
+  if (!cfg_.activations.empty() && cfg_.activations.size() != n_layers) {
+    throw ShapeError("Module: activations must be empty or have one entry per layer (" +
+                     std::to_string(n_layers) + "), got " +
+                     std::to_string(cfg_.activations.size()));
+  }
   if (!inputs_.empty() &&
       sum_child_out_features(inputs_) != cfg_.layer_sizes.front()) {
     throw ShapeError(
@@ -36,14 +43,14 @@ Module::Module(const ModuleConfig& cfg, std::vector<Module*> inputs)
   // layer's feeds the one below it.
   const bool own_input_grad_needed = !inputs_.empty() || cfg_.retain_input_grad;
 
-  layers_.reserve(cfg_.layer_sizes.size() - 1);
-  for (size_t i = 0; i + 1 < cfg_.layer_sizes.size(); i++) {
+  layers_.reserve(n_layers);
+  for (size_t i = 0; i < n_layers; i++) {
     LinearConfig lc;
     lc.needs_input_grad = (i > 0) || own_input_grad_needed;
     lc.in_features = cfg_.layer_sizes[i];
     lc.out_features = cfg_.layer_sizes[i + 1];
     lc.max_batch = cfg_.max_batch;
-    lc.activation = cfg_.activation;
+    lc.activation = cfg_.activations.empty() ? cfg_.activation : cfg_.activations[i];
     lc.inference_only = cfg_.inference_only;
     lc.seed = cfg_.seed.has_value() ? std::optional<uint64_t>(*cfg_.seed + i)
                                      : std::nullopt;

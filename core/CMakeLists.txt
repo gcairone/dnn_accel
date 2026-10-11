@@ -5,6 +5,8 @@
 add_library(fastmlp_core STATIC
   src/simd/gemm_kernel_scalar.cpp
   src/simd/gemm_kernel_avx2.cpp
+  src/simd/activation_scalar.cpp
+  src/simd/activation_avx2.cpp
   src/activation.cpp
   src/layer.cpp
   src/module.cpp

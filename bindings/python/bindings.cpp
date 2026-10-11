@@ -13,10 +13,12 @@ NB_MODULE(_fastmlp, m) {
   nb::exception<fastmlp::StateError>(m, "StateError", PyExc_RuntimeError);
 
   nb::class_<MLP>(m, "MLP")
-      .def(nb::init<std::vector<int>, const std::string&, int, std::vector<std::shared_ptr<MLP>>,
-                     bool, std::optional<std::string>, std::optional<uint64_t>>(),
+      .def(nb::init<std::vector<int>, const ActivationArg&, int, std::vector<std::shared_ptr<MLP>>,
+                     bool, std::optional<std::string>, std::optional<uint64_t>,
+                     std::optional<std::string>>(),
            "layers"_a, "activation"_a = "relu", "max_batch"_a, "inputs"_a = std::vector<std::shared_ptr<MLP>>{},
-           "inference_only"_a = false, "name"_a = nb::none(), "seed"_a = nb::none())
+           "inference_only"_a = false, "name"_a = nb::none(), "seed"_a = nb::none(),
+           "output_activation"_a = nb::none())
       .def("__call__", &MLP::call)
       .def("backward", &MLP::backward, "grad_out"_a.noconvert())
       .def("freeze", &MLP::freeze)
@@ -32,7 +34,8 @@ NB_MODULE(_fastmlp, m) {
       .def_prop_ro("out_features", &MLP::out_features)
       .def_prop_ro("max_batch", &MLP::max_batch)
       .def_prop_ro("inference_only", &MLP::inference_only)
-      .def_prop_ro("is_leaf", &MLP::is_leaf);
+      .def_prop_ro("is_leaf", &MLP::is_leaf)
+      .def_prop_ro("activations", &MLP::activations);
 
   register_optim(m);
 }

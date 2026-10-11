@@ -12,6 +12,7 @@ reimplement the C++ side's hand-rolled restricted parser.
 """
 
 import json
+import math
 import os
 import tempfile
 
@@ -45,15 +46,35 @@ def _extract_layers(header, blob):
     return layers
 
 
+_erf = np.vectorize(math.erf)
+_GELU_K0 = math.sqrt(2.0 / math.pi)
+
+
+def _sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-z))
+
+
 def _act(name, z):
     if name == "relu":
         return np.maximum(z, 0.0)
     if name == "identity":
         return z
     if name == "sigmoid":
-        return 1.0 / (1.0 + np.exp(-z))
+        return _sigmoid(z)
     if name == "tanh":
         return np.tanh(z)
+    if name == "leaky_relu":
+        return np.where(z > 0, z, 0.01 * z)
+    if name == "elu":
+        return np.where(z > 0, z, np.expm1(np.minimum(z, 0.0)))
+    if name == "silu":
+        return z * _sigmoid(z)
+    if name == "gelu":
+        return 0.5 * z * (1.0 + _erf(z / math.sqrt(2.0)))
+    if name == "gelu_tanh":
+        return 0.5 * z * (1.0 + np.tanh(_GELU_K0 * (z + 0.044715 * z**3)))
+    if name == "softplus":
+        return np.logaddexp(0.0, z)
     raise ValueError(name)
 
 
@@ -66,32 +87,57 @@ def _act_grad(name, z, a):
         return a * (1.0 - a)
     if name == "tanh":
         return 1.0 - a * a
+    if name == "leaky_relu":
+        return np.where(z > 0, 1.0, 0.01)
+    if name == "elu":
+        return np.where(z > 0, 1.0, np.exp(np.minimum(z, 0.0)))
+    if name == "silu":
+        s = _sigmoid(z)
+        return s * (1.0 + z * (1.0 - s))
+    if name == "gelu":
+        return 0.5 * (1.0 + _erf(z / math.sqrt(2.0))) + z * np.exp(-0.5 * z * z) / math.sqrt(2.0 * math.pi)
+    if name == "gelu_tanh":
+        t = np.tanh(_GELU_K0 * (z + 0.044715 * z**3))
+        return 0.5 * (1.0 + t) + 0.5 * z * (1.0 - t * t) * _GELU_K0 * (1.0 + 3 * 0.044715 * z * z)
+    if name == "softplus":
+        return _sigmoid(z)
     raise ValueError(name)
 
 
+ALL_ACTIVATIONS = ["identity", "relu", "sigmoid", "tanh", "leaky_relu", "elu", "silu", "gelu",
+                   "gelu_tanh", "softplus"]
+
+
+def _per_layer(activation, n_layers):
+    """`activation` as the .mlpf header stores it: one name, or one per layer."""
+    return list(activation) if isinstance(activation, list) else [activation] * n_layers
+
+
 def ref_forward(layers, activation, x):
+    acts = _per_layer(activation, len(layers))
     a = x.astype(np.float64)
-    for W, b in layers:
+    for (W, b), act in zip(layers, acts):
         z = a @ W.T.astype(np.float64) + b.astype(np.float64)
-        a = _act(activation, z)
+        a = _act(act, z)
     return a
 
 
 def ref_forward_backward(layers, activation, x, dOut):
     """Standard textbook backprop, float64 throughout for a clean oracle."""
+    acts = _per_layer(activation, len(layers))
     zs, activations = [], [x.astype(np.float64)]
     a = x.astype(np.float64)
-    for W, b in layers:
+    for (W, b), act in zip(layers, acts):
         z = a @ W.T.astype(np.float64) + b.astype(np.float64)
         zs.append(z)
-        a = _act(activation, z)
+        a = _act(act, z)
         activations.append(a)
 
     grads = [None] * len(layers)
     dA = dOut.astype(np.float64)
     for i in reversed(range(len(layers))):
         W, _ = layers[i]
-        dZ = dA * _act_grad(activation, zs[i], activations[i + 1])
+        dZ = dA * _act_grad(acts[i], zs[i], activations[i + 1])
         a_in = activations[i]
         dW = dZ.T @ a_in
         db = dZ.sum(axis=0)
@@ -141,7 +187,7 @@ def test_forward_matches_independent_numpy_reference(tmp_path):
 
 
 def test_forward_matches_reference_for_every_activation():
-    for activation in ["relu", "sigmoid", "tanh", "identity"]:
+    for activation in ALL_ACTIVATIONS:
         model = fm.MLP([8, 12, 3], activation=activation, max_batch=8, seed=1)
         x = np.random.rand(4, 8).astype(np.float32)
         got = model(x)
@@ -211,3 +257,46 @@ def test_frozen_module_weights_unchanged_after_step(tmp_path):
     for (W_b, b_b), (W_a, b_a) in zip(before, after):
         assert np.array_equal(W_b, W_a)
         assert np.array_equal(b_b, b_a)
+
+
+def _sgd_step_matches_reference(tmp_path, model, header_activation, sizes):
+    path_before = str(tmp_path / "before.mlpf")
+    model.save(path_before)
+    header, blob = _read_mlpf(path_before)
+    assert header["activation"] == header_activation
+    layers = _extract_layers(header, blob)
+
+    rng = np.random.default_rng(17)
+    x = rng.standard_normal((5, sizes[0])).astype(np.float32)
+    dOut = rng.standard_normal((5, sizes[-1])).astype(np.float32)
+
+    grads, out_ref = ref_forward_backward(layers, header["activation"], x, dOut)
+    lr = 0.01
+    expected = [(W - lr * dW, b - lr * db) for (W, b), (dW, db) in zip(layers, grads)]
+
+    opt = fm.SGD(model, lr=lr)
+    assert np.allclose(model(x), out_ref, atol=1e-4)
+    model.backward(dOut)
+    opt.step()
+
+    path_after = str(tmp_path / "after.mlpf")
+    model.save(path_after)
+    got = _extract_layers(*_read_mlpf(path_after))
+    for (W_got, b_got), (W_exp, b_exp) in zip(got, expected):
+        assert np.allclose(W_got, W_exp, atol=1e-4)
+        assert np.allclose(b_got, b_exp, atol=1e-4)
+
+
+def test_per_layer_activation_list_matches_reference(tmp_path):
+    acts = ["gelu", "silu", "elu", "identity"]
+    sizes = [7, 12, 10, 6, 3]
+    model = fm.MLP(sizes, activation=acts, max_batch=8, seed=5)
+    assert model.activations == acts
+    _sgd_step_matches_reference(tmp_path, model, acts, sizes)
+
+
+def test_output_activation_matches_reference(tmp_path):
+    sizes = [6, 16, 8, 2]
+    model = fm.MLP(sizes, activation="relu", output_activation="identity", max_batch=8, seed=6)
+    assert model.activations == ["relu", "relu", "identity"]
+    _sgd_step_matches_reference(tmp_path, model, ["relu", "relu", "identity"], sizes)

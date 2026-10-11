@@ -1,43 +1,56 @@
 #include "fastmlp/activation.hpp"
 
-#include <cmath>
+#include "fastmlp/simd/activation_kernel.hpp"
 
 namespace fastmlp {
 
-void activation_forward(ActivationKind kind, const float* z, float* a, int n) {
-  switch (kind) {
-    case ActivationKind::Identity:
-      for (int i = 0; i < n; i++) a[i] = z[i];
-      break;
-    case ActivationKind::ReLU:
-      for (int i = 0; i < n; i++) a[i] = z[i] > 0.0f ? z[i] : 0.0f;
-      break;
-    case ActivationKind::Sigmoid:
-      for (int i = 0; i < n; i++) a[i] = 1.0f / (1.0f + std::exp(-z[i]));
-      break;
-    case ActivationKind::Tanh:
-      for (int i = 0; i < n; i++) a[i] = std::tanh(z[i]);
-      break;
+namespace {
+struct NamedKind {
+  const char* name;
+  ActivationKind kind;
+};
+constexpr NamedKind kNames[] = {
+    {"identity", ActivationKind::Identity},     {"relu", ActivationKind::ReLU},
+    {"sigmoid", ActivationKind::Sigmoid},       {"tanh", ActivationKind::Tanh},
+    {"leaky_relu", ActivationKind::LeakyReLU},  {"elu", ActivationKind::ELU},
+    {"silu", ActivationKind::SiLU},             {"gelu", ActivationKind::GELU},
+    {"gelu_tanh", ActivationKind::GELUTanh},    {"softplus", ActivationKind::Softplus},
+};
+}  // namespace
+
+const char* activation_name(ActivationKind kind) {
+  for (const auto& e : kNames) {
+    if (e.kind == kind) return e.name;
   }
+  return "?";
+}
+
+std::optional<ActivationKind> activation_from_name(std::string_view name) {
+  for (const auto& e : kNames) {
+    if (name == e.name) return e.kind;
+  }
+  return std::nullopt;
+}
+
+const char* activation_names_list() {
+  return "identity, relu, sigmoid, tanh, leaky_relu, elu, silu, gelu, gelu_tanh, softplus";
+}
+
+void activation_forward(ActivationKind kind, const float* z, float* a, int n) {
+#if defined(FASTMLP_BACKEND_AVX2)
+  simd::avx2::activation_forward(kind, z, a, n);
+#else
+  simd::scalar::activation_forward(kind, z, a, n);
+#endif
 }
 
 void activation_backward(ActivationKind kind, const float* z, const float* a,
                           const float* dA, float* dZ, int n) {
-  switch (kind) {
-    case ActivationKind::Identity:
-      for (int i = 0; i < n; i++) dZ[i] = dA[i];
-      break;
-    case ActivationKind::ReLU:
-      // Subgradient convention at the kink (z==0): derivative 0.
-      for (int i = 0; i < n; i++) dZ[i] = z[i] > 0.0f ? dA[i] : 0.0f;
-      break;
-    case ActivationKind::Sigmoid:
-      for (int i = 0; i < n; i++) dZ[i] = dA[i] * a[i] * (1.0f - a[i]);
-      break;
-    case ActivationKind::Tanh:
-      for (int i = 0; i < n; i++) dZ[i] = dA[i] * (1.0f - a[i] * a[i]);
-      break;
-  }
+#if defined(FASTMLP_BACKEND_AVX2)
+  simd::avx2::activation_backward(kind, z, a, dA, dZ, n);
+#else
+  simd::scalar::activation_backward(kind, z, a, dA, dZ, n);
+#endif
 }
 
 }  // namespace fastmlp

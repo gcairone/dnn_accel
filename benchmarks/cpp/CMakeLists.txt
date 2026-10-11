@@ -24,3 +24,8 @@ fastmlp_apply_arch_flags(bench_train_step)
 add_executable(bench_breakdown bench_breakdown.cpp)
 target_link_libraries(bench_breakdown PRIVATE fastmlp_core)
 fastmlp_apply_arch_flags(bench_breakdown)
+
+# Per-activation scalar vs avx2 cost, forward and backward.
+add_executable(bench_activation bench_activation.cpp)
+target_link_libraries(bench_activation PRIVATE fastmlp_core)
+fastmlp_apply_arch_flags(bench_activation)

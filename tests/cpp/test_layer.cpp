@@ -104,6 +104,15 @@ TEST(gradient_check_odd_small_shape_tanh) {
   check_gradients(/*in=*/7, /*out=*/3, /*batch=*/2, ActivationKind::Tanh);
 }
 
+// The smooth newer kinds. LeakyReLU is left out for ReLU's reason (its kink);
+// ELU is C1 at 0 with alpha = 1, so finite differences are fine there.
+TEST(gradient_check_smooth_activations) {
+  for (ActivationKind k : {ActivationKind::ELU, ActivationKind::SiLU, ActivationKind::GELU,
+                           ActivationKind::GELUTanh, ActivationKind::Softplus}) {
+    check_gradients(/*in=*/9, /*out=*/11, /*batch=*/3, k);
+  }
+}
+
 TEST(frozen_layer_skips_weight_grad_but_still_propagates_input_grad) {
   LinearConfig cfg;
   cfg.in_features = 4;

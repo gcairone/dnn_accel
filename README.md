@@ -28,13 +28,14 @@ the acceptance benchmark), [`examples/inference/results.md`](examples/inference/
 |---|---|---|---|
 | training, `[20,64,32,1]` B=128 | 44 us/step | 394 us/step | **9.02x** |
 | training, `[512,256,128,1]` B=256 | 2579 us/step | 3107 us/step | **1.20x** |
-| training, real MNIST `[784,256,128,10]` B=128 | 2234 us/iter | 3582 us/iter | **1.60x** |
+| training, real MNIST `[784,256,128,10]` B=128 | 2097 us/iter | 3642 us/iter | **1.74x** |
 | inference, `[8,16,8,1]` B=1 | 0.12 us/call | 32.2 us/call | **265x** |
 | inference, `[512,512]` B=1 | 12.6 us/call | 33.8 us/call | **2.68x** |
 
 ## What's in scope
 
-`Linear` layers, four activations (ReLU/sigmoid/tanh/identity), tree-only
+`Linear` layers, ten activations chosen per layer (identity, ReLU, leaky ReLU,
+ELU, sigmoid, tanh, SiLU, GELU, tanh-GELU, softplus), tree-only
 composition (leaf modules concatenated feature-wise into a parent), SGD/Adam,
 `.mlpf` save/load. Static shapes only — architecture and max batch size are
 fixed at construction, everything is preallocated. No autograd, no conv/RNN/
@@ -117,11 +118,11 @@ docker exec fastmlp-dev bash -c 'cd /workspace && python3 examples/inference/inf
 import fastmlp as fm
 import numpy as np
 
-# Binary classifier. activation applies to every layer including the last,
-# so for a sigmoid-range output ("prob of class 1") the whole stack must be
-# sigmoid -- relu-on-everything is numerically unstable with bce_grad (see
-# the project notes' "Performance invariants" section, or just don't do it).
-model = fm.MLP([20, 64, 32, 1], activation="sigmoid", max_batch=128, seed=0)
+# Binary classifier. `activation` applies to every layer, `output_activation`
+# overrides the last one (or pass a list, one name per layer). The output
+# must be a probability for bce_grad -- relu there too diverges.
+model = fm.MLP([20, 64, 32, 1], activation="relu", output_activation="sigmoid",
+               max_batch=128, seed=0)
 opt = fm.SGD(model, lr=0.5)
 
 for epoch in range(100):
@@ -155,6 +156,10 @@ for img_feat, meta_feat, target in dataloader:
 model.save("model.mlpf")
 loaded = fm.MLP.load("model.mlpf")
 ```
+
+Multi-class: a linear output plus the fused softmax + cross-entropy gradient,
+which takes logits — `fm.MLP([...], activation="relu", output_activation="identity", ...)`
+then `model.backward(fm.cross_entropy_grad(logits, labels))`.
 
 NumPy contract: every array crossing into fastmlp must be `float32` and
 C-contiguous, or it raises — never a silent cast or copy. Every `model(x)`

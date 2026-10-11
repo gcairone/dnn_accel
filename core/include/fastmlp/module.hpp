@@ -13,7 +13,11 @@ struct ModuleConfig {
                                   // (raw external width if leaf, sum of
                                   // children's out_features if composite);
                                   // rest = each own-layer's output width.
-  ActivationKind activation;
+  // Applied to every own layer unless `activations` is set.
+  ActivationKind activation = ActivationKind::ReLU;
+  // Per-layer override: empty, or exactly layer_sizes.size()-1 entries (one
+  // per own Linear, input side first) -- anything else is a ShapeError.
+  std::vector<ActivationKind> activations;
   int max_batch;
   bool inference_only = false;
   // A composite module always needs its own-stack input gradient -- that is
@@ -83,7 +87,7 @@ class Module {
   int out_features() const { return cfg_.layer_sizes.back(); }
   int max_batch() const { return cfg_.max_batch; }
   bool inference_only() const { return cfg_.inference_only; }
-  ActivationKind activation() const { return cfg_.activation; }
+  // Per layer: layers()[i].activation().
 
   std::vector<Linear>& layers() { return layers_; }
   const std::vector<Linear>& layers() const { return layers_; }

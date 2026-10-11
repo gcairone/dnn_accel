@@ -13,22 +13,10 @@ namespace {
 
 // --- activation <-> string ------------------------------------------
 
-std::string activation_to_string(ActivationKind k) {
-  switch (k) {
-    case ActivationKind::Identity: return "identity";
-    case ActivationKind::ReLU: return "relu";
-    case ActivationKind::Sigmoid: return "sigmoid";
-    case ActivationKind::Tanh: return "tanh";
-  }
-  throw ShapeError("mlpf: unreachable activation kind");
-}
-
 ActivationKind activation_from_string(const std::string& s) {
-  if (s == "identity") return ActivationKind::Identity;
-  if (s == "relu") return ActivationKind::ReLU;
-  if (s == "sigmoid") return ActivationKind::Sigmoid;
-  if (s == "tanh") return ActivationKind::Tanh;
-  throw ShapeError("mlpf: unknown activation '" + s + "'");
+  auto k = activation_from_name(s);
+  if (!k) throw ShapeError("mlpf: unknown activation '" + s + "'");
+  return *k;
 }
 
 // --- minimal hand-rolled JSON, restricted to the .mlpf vocabulary ----
@@ -45,7 +33,9 @@ struct ParsedChildRef {
 
 struct ParsedHeader {
   std::string name;
-  std::string activation;
+  // One entry = every layer (how MLPF1 always wrote it, and still writes a
+  // uniform stack); otherwise one per layer.
+  std::vector<std::string> activations;
   int max_batch = 0;
   std::vector<int> layers;
   std::vector<ParsedChildRef> children;
@@ -120,7 +110,17 @@ ParsedHeader parse_object(JsonCursor& cur) {
       std::string dtype = cur.parse_string();
       if (dtype != "float32") throw ShapeError("mlpf: unsupported dtype '" + dtype + "'");
     } else if (key == "activation") {
-      h.activation = cur.parse_string();
+      if (cur.peek() == '[') {
+        cur.expect('[');
+        while (true) {
+          h.activations.push_back(cur.parse_string());
+          if (cur.try_char(',')) continue;
+          cur.expect(']');
+          break;
+        }
+      } else {
+        h.activations.push_back(cur.parse_string());
+      }
     } else if (key == "max_batch") {
       h.max_batch = (int)cur.parse_int();
     } else if (key == "layers") {
@@ -194,8 +194,22 @@ void write_header_object(std::ostream& out, const Module& node, const std::strin
   out << "\"name\":";
   write_string(out, name);
   out << ",\"dtype\":\"float32\"";
+  // A uniform stack keeps the plain-string form, so such files stay
+  // byte-identical to what pre-per-layer versions wrote (and readable by them).
   out << ",\"activation\":";
-  write_string(out, activation_to_string(node.activation()));
+  const auto& layers = node.layers();
+  bool uniform = true;
+  for (auto& l : layers) uniform = uniform && l.activation() == layers.front().activation();
+  if (uniform) {
+    write_string(out, activation_name(layers.front().activation()));
+  } else {
+    out << '[';
+    for (size_t i = 0; i < layers.size(); i++) {
+      if (i) out << ',';
+      write_string(out, activation_name(layers[i].activation()));
+    }
+    out << ']';
+  }
   out << ",\"max_batch\":" << node.max_batch();
   out << ",\"layers\":[";
   auto sizes = reconstruct_layer_sizes(node);
@@ -300,7 +314,13 @@ Module* construct_shapes(const ParsedHeader& h, std::vector<std::unique_ptr<Modu
 
   ModuleConfig cfg;
   cfg.layer_sizes = h.layers;
-  cfg.activation = activation_from_string(h.activation);
+  if (h.activations.empty()) throw ShapeError("mlpf: header has no activation");
+  if (h.activations.size() == 1) {
+    cfg.activation = activation_from_string(h.activations.front());
+  } else {
+    // Module itself rejects a count that doesn't match the layer count.
+    for (auto& a : h.activations) cfg.activations.push_back(activation_from_string(a));
+  }
   cfg.max_batch = opts.max_batch_override.value_or(h.max_batch);
   cfg.inference_only = opts.inference_only;
 

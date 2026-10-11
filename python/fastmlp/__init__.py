@@ -5,7 +5,7 @@ helpers (see idea.md / usages.md for the full API by example).
 """
 
 from ._fastmlp import MLP, SGD, Adam, ShapeError, StateError
-from .losses import bce_grad, mse_grad
+from .losses import bce_grad, cross_entropy_grad, mse_grad
 
 __all__ = [
     "MLP",
@@ -15,4 +15,5 @@ __all__ = [
     "StateError",
     "mse_grad",
     "bce_grad",
+    "cross_entropy_grad",
 ]

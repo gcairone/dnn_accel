@@ -5,6 +5,7 @@ test_train_correctness.py for gradient parity).
 """
 
 import numpy as np
+import pytest
 
 import fastmlp as fm
 
@@ -145,3 +146,51 @@ def test_training_loss_actually_decreases():
         opt.zero_grad()
 
     assert losses[-1] < losses[0] * 0.5
+
+
+def test_activation_forms_and_errors():
+    assert fm.MLP([4, 8, 2], max_batch=4).activations == ["relu", "relu"]
+    assert fm.MLP([4, 8, 2], activation="tanh", max_batch=4).activations == ["tanh", "tanh"]
+    assert fm.MLP([4, 8, 2], activation="tanh", output_activation="sigmoid",
+                  max_batch=4).activations == ["tanh", "sigmoid"]
+    assert fm.MLP([4, 8, 2], activation=["gelu_tanh", "softplus"],
+                  max_batch=4).activations == ["gelu_tanh", "softplus"]
+    # a one-layer module: output_activation is its only layer
+    assert fm.MLP([4, 2], activation="relu", output_activation="identity",
+                  max_batch=4).activations == ["identity"]
+
+    with pytest.raises(ValueError, match="one per layer"):
+        fm.MLP([4, 8, 2], activation=["relu"], max_batch=4)
+    with pytest.raises(ValueError, match="not both"):
+        fm.MLP([4, 8, 2], activation=["relu", "relu"], output_activation="identity", max_batch=4)
+    with pytest.raises(ValueError, match="unknown activation 'swish'"):
+        fm.MLP([4, 8, 2], activation="swish", max_batch=4)
+    with pytest.raises(ValueError, match="unknown activation"):
+        fm.MLP([4, 8, 2], activation="relu", output_activation="softmax", max_batch=4)
+
+
+def test_tree_with_mixed_activations_trains():
+    rng = np.random.default_rng(3)
+    enc_a = fm.MLP([6, 16, 8], activation="gelu", max_batch=32, seed=1)
+    enc_b = fm.MLP([4, 16, 8], activation=["silu", "tanh"], max_batch=32, seed=2)
+    model = fm.MLP([16, 16, 3], activation="relu", output_activation="identity",
+                   inputs=[enc_a, enc_b], max_batch=32, seed=3)
+    opt = fm.Adam(model, lr=1e-2)
+
+    a = rng.standard_normal((32, 6)).astype(np.float32)
+    b = rng.standard_normal((32, 4)).astype(np.float32)
+    labels = (a[:, 0] > 0).astype(np.int64) + (b[:, 0] > 0).astype(np.int64)
+
+    def loss():
+        z = model(a, b).astype(np.float64)
+        z -= z.max(axis=1, keepdims=True)
+        logp = z - np.log(np.exp(z).sum(axis=1, keepdims=True))
+        return -logp[np.arange(32), labels].mean()
+
+    first = loss()
+    for _ in range(100):
+        logits = model(a, b)
+        model.backward(fm.cross_entropy_grad(logits, labels))
+        opt.step()
+        opt.zero_grad()
+    assert loss() < 0.5 * first

@@ -1,7 +1,9 @@
 #include "fastmlp/mlpf.hpp"
 
 #include <cstdio>
+#include <cstring>
 #include <fstream>
+#include <string>
 #include <vector>
 
 #include "fastmlp/errors.hpp"
@@ -147,6 +149,104 @@ TEST(load_weights_into_existing_tree) {
   fastmlp::mlpf::load_weights_into(fresh, path);
   assert_weights_equal(original, fresh);
 
+  std::remove(path);
+}
+
+namespace {
+std::string read_header_line(const char* path) {
+  std::ifstream in(path, std::ios::binary);
+  std::string line;
+  std::getline(in, line);
+  return line;
+}
+}  // namespace
+
+TEST(mixed_activation_tree_roundtrip) {
+  const char* path = "/tmp/fastmlp_test_mixed_act.mlpf";
+  ModuleConfig a_cfg;
+  a_cfg.layer_sizes = {6, 10, 4};
+  a_cfg.activations = {ActivationKind::GELU, ActivationKind::SiLU};
+  a_cfg.max_batch = 8;
+  a_cfg.seed = 300;
+  Module a(a_cfg);
+  ModuleConfig b_cfg;
+  b_cfg.layer_sizes = {3, 4};
+  b_cfg.activation = ActivationKind::LeakyReLU;  // uniform child
+  b_cfg.max_batch = 8;
+  b_cfg.seed = 310;
+  Module b(b_cfg);
+  ModuleConfig root_cfg;
+  root_cfg.layer_sizes = {8, 5, 1};
+  root_cfg.activations = {ActivationKind::Softplus, ActivationKind::Identity};
+  root_cfg.max_batch = 8;
+  root_cfg.seed = 320;
+  Module root(root_cfg, {&a, &b});
+
+  fastmlp::mlpf::save(root, path);
+  std::string header = read_header_line(path);
+  ASSERT_TRUE(header.find("\"activation\":[\"softplus\",\"identity\"]") != std::string::npos);
+  ASSERT_TRUE(header.find("\"activation\":[\"gelu\",\"silu\"]") != std::string::npos);
+  ASSERT_TRUE(header.find("\"activation\":\"leaky_relu\"") != std::string::npos);
+
+  auto loaded = fastmlp::mlpf::load(path);
+  Module& r = loaded.root();
+  assert_weights_equal(root, r);
+  ASSERT_TRUE(r.layers()[0].activation() == ActivationKind::Softplus);
+  ASSERT_TRUE(r.layers()[1].activation() == ActivationKind::Identity);
+  ASSERT_TRUE(r.inputs()[0]->layers()[0].activation() == ActivationKind::GELU);
+  ASSERT_TRUE(r.inputs()[0]->layers()[1].activation() == ActivationKind::SiLU);
+  ASSERT_TRUE(r.inputs()[1]->layers()[0].activation() == ActivationKind::LeakyReLU);
+
+  // Same weights + same activations => same outputs.
+  std::vector<float> xa(2 * 6), xb(2 * 3);
+  for (size_t i = 0; i < xa.size(); i++) xa[i] = 0.1f * (float)((int)(i % 5) - 2);
+  for (size_t i = 0; i < xb.size(); i++) xb[i] = 0.2f * (float)((int)(i % 3) - 1);
+  std::vector<float> y_orig(2);
+  std::memcpy(y_orig.data(), root.forward({xa.data(), xb.data()}, 2), sizeof(float) * 2);
+  const float* y_loaded = r.forward({xa.data(), xb.data()}, 2);
+  for (int i = 0; i < 2; i++) ASSERT_EQ(y_orig[i], y_loaded[i]);
+  std::remove(path);
+}
+
+// A uniform stack must keep the original single-string form, so files written
+// before per-layer activations existed and files written now are identical.
+TEST(uniform_activation_still_written_as_plain_string) {
+  const char* path = "/tmp/fastmlp_test_uniform_act.mlpf";
+  ModuleConfig cfg;
+  cfg.layer_sizes = {5, 4, 2};
+  cfg.activations = {ActivationKind::Tanh, ActivationKind::Tanh};  // explicit, but uniform
+  cfg.max_batch = 4;
+  cfg.seed = 330;
+  Module m(cfg);
+  fastmlp::mlpf::save(m, path);
+  ASSERT_EQ(read_header_line(path),
+            std::string("MLPF1{\"name\":\"model\",\"dtype\":\"float32\",\"activation\":\"tanh\","
+                        "\"max_batch\":4,\"layers\":[5,4,2],\"inputs\":[]}"));
+  std::remove(path);
+}
+
+TEST(bad_activation_header_throws) {
+  const char* path = "/tmp/fastmlp_test_bad_act.mlpf";
+  const char* headers[] = {
+      // unknown name
+      "MLPF1{\"name\":\"m\",\"dtype\":\"float32\",\"activation\":\"swish\",\"max_batch\":2,"
+      "\"layers\":[2,1],\"inputs\":[]}",
+      // list length != layer count
+      "MLPF1{\"name\":\"m\",\"dtype\":\"float32\",\"activation\":[\"relu\",\"tanh\",\"relu\"],"
+      "\"max_batch\":2,\"layers\":[2,3,1],\"inputs\":[]}",
+      // empty list
+      "MLPF1{\"name\":\"m\",\"dtype\":\"float32\",\"activation\":[],\"max_batch\":2,"
+      "\"layers\":[2,1],\"inputs\":[]}",
+  };
+  for (const char* h : headers) {
+    {
+      std::ofstream out(path, std::ios::binary);
+      out << h << "\n";
+      std::vector<float> blob(64, 0.0f);
+      out.write((const char*)blob.data(), sizeof(float) * blob.size());
+    }
+    ASSERT_THROWS(fastmlp::mlpf::load(path));
+  }
   std::remove(path);
 }
 
