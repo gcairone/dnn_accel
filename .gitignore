@@ -27,3 +27,6 @@ examples/deep_mlp/data/
 .claude/settings.local.json
 idea.md
 usages.md
+# benchmarks/suite: generated datasets/initial weights, and --quick smoke runs
+benchmarks/suite/data/
+benchmarks/suite/results/quick/

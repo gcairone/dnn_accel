@@ -53,6 +53,7 @@ endif()
 
 if(FASTMLP_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks/cpp)
+  add_subdirectory(benchmarks/suite)
 endif()
 
 if(FASTMLP_BUILD_PYTHON)

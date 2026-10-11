@@ -6,8 +6,12 @@ CPU (AMD Ryzen 7 4800H / Zen 2), single-threaded. The point: PyTorch's CPU
 path pays for a computational graph, dynamic dispatch, and a general
 thread-pool BLAS that a small-to-medium, statically-shaped MLP doesn't need.
 This library skips all of that and, on this specific CPU, beats PyTorch's
-single-thread throughput on every shape measured so far — training and
-inference alike.
+single-thread throughput on every training configuration measured so far
+(eager PyTorch; against `torch.compile` everywhere but the two ~2M-parameter
+models, which are at parity), and on inference up to batch 128 — by 1.04x to
+170x, most where per-call overhead dominates. At batch 1024 on 100k+
+parameter models the two are at parity (0.86–1.06x; MKL's large-batch GEMM
+catches up).
 
 Full design rationale: [`idea.md`](idea.md). Intended API by example:
 [`usages.md`](usages.md). Repo layout, file-by-file rationale, and
@@ -22,7 +26,9 @@ produced them:
 [`benchmarks/cpp/results.md`](benchmarks/cpp/results.md) (kernel-level),
 [`benchmarks/python/results.md`](benchmarks/python/results.md) (training,
 the acceptance benchmark), [`examples/inference/results.md`](examples/inference/results.md)
-(inference-only).
+(inference-only), and [`benchmarks/suite/results/results.md`](benchmarks/suite/results/results.md)
+— the broad one: 13 realistic architectures, inference / training step /
+full training runs, against both eager PyTorch and `torch.compile`.
 
 | | fastmlp | PyTorch | speedup |
 |---|---|---|---|
@@ -50,7 +56,8 @@ nothing here is expected to build on the bare host.
 ```bash
 # Build the image and start a long-running container (once)
 docker build --network host -t fastmlp-dev -f docker/Dockerfile .
-docker run -d --name fastmlp-dev --network host -v "$PWD":/workspace -w /workspace fastmlp-dev
+docker run -d --name fastmlp-dev --network host --cpuset-cpus=0-3 --memory=4g --memory-swap=4g \
+  -v "$PWD":/workspace -w /workspace fastmlp-dev
 
 # Everything below runs via `docker exec fastmlp-dev ...`, from /workspace
 ```
@@ -86,9 +93,20 @@ directories in this repo):
 ```bash
 docker exec fastmlp-dev bash -c '
   cmake -S . -B build-bench -DFASTMLP_SIMD_BACKEND=AVX2 -DFASTMLP_BUILD_BENCHMARKS=ON -DFASTMLP_BUILD_TESTS=OFF -DFASTMLP_BUILD_PYTHON=OFF
-  cmake --build build-bench -j$(nproc)
+  cmake --build build-bench -j4
   ./build-bench/benchmarks/cpp/bench_breakdown   # phase-by-phase profile of a real training step
   python3 benchmarks/python/bench_train_vs_torch.py
+'
+```
+
+The full suite (`benchmarks/suite/`, ~20 min; `--quick` for a 3-minute subset):
+
+```bash
+# -u: data/ and results/ get written as you, not root
+docker exec -u $(id -u):$(id -g) fastmlp-dev bash -c '
+  python3 benchmarks/suite/prepare_data.py   # once; needs examples/mnist/prepare_data.py first
+  python3 benchmarks/suite/verify.py         # fastmlp and torch compute the same thing
+  python3 benchmarks/suite/run.py all        # -> benchmarks/suite/results/results.md
 '
 ```
 

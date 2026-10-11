@@ -1,0 +1,1586 @@
+{
+ "env": {
+  "date": "2026-10-11T12:05:38",
+  "cpu": "AMD Ryzen 7 4800H with Radeon Graphics",
+  "python": "3.10.12",
+  "pinned_core": 0,
+  "allowed_cores": [
+   0,
+   1,
+   2,
+   3
+  ],
+  "numpy": "2.2.6",
+  "torch": "2.13.0+cpu",
+  "git": "0f7dd3f"
+ },
+ "impls": [
+  "cpp",
+  "fastmlp",
+  "torch",
+  "torch_compile"
+ ],
+ "rounds": 3,
+ "records": [
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "tabular_s",
+   "batch": 64,
+   "sec": 7.62489015e-06,
+   "inner": 5506,
+   "compile_s": null,
+   "params": 1089,
+   "sec_rounds": [
+    7.5354018e-06,
+    7.62489015e-06,
+    7.63065068e-06
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "tabular_s",
+   "batch": 256,
+   "sec": 2.75663437e-05,
+   "inner": 1728,
+   "compile_s": null,
+   "params": 1089,
+   "sec_rounds": [
+    2.74264779e-05,
+    2.75663437e-05,
+    2.75930919e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "tabular_s",
+   "batch": 64,
+   "sec": 1.7113074520832908e-05,
+   "inner": 2631,
+   "compile_s": null,
+   "params": 1089,
+   "sec_rounds": [
+    1.705835288451759e-05,
+    1.7113074520832908e-05,
+    1.734979994037941e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "tabular_s",
+   "batch": 256,
+   "sec": 3.850524800337767e-05,
+   "inner": 1246,
+   "compile_s": null,
+   "params": 1089,
+   "sec_rounds": [
+    3.848897483399081e-05,
+    3.850524800337767e-05,
+    3.866732944230465e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "tabular_s",
+   "batch": 64,
+   "sec": 0.0005848620238388518,
+   "inner": 83,
+   "compile_s": null,
+   "params": 1089,
+   "sec_rounds": [
+    0.0005817799024099922,
+    0.0005848620238388518,
+    0.0005887298654001879
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "tabular_s",
+   "batch": 256,
+   "sec": 0.0006562465509304252,
+   "inner": 78,
+   "compile_s": null,
+   "params": 1089,
+   "sec_rounds": [
+    0.0006242998339848159,
+    0.0006562465509304252,
+    0.000672911643050611
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "tabular_s",
+   "batch": 64,
+   "sec": 0.0004885534829411068,
+   "inner": 95,
+   "compile_s": 6.939335743896663,
+   "params": 1089,
+   "sec_rounds": [
+    0.00047925210800831735,
+    0.0004885534829411068,
+    0.0004893109471978326
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "tabular_s",
+   "batch": 256,
+   "sec": 0.0005199228524526751,
+   "inner": 88,
+   "compile_s": 4.981203102041036,
+   "params": 1089,
+   "sec_rounds": [
+    0.0005114775115583578,
+    0.0005199228524526751,
+    0.0005273739212296075
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "tabular_m",
+   "batch": 64,
+   "sec": 0.000544434046,
+   "inner": 88,
+   "compile_s": null,
+   "params": 115457,
+   "sec_rounds": [
+    0.000542387215,
+    0.000544434046,
+    0.000549006697
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "tabular_m",
+   "batch": 256,
+   "sec": 0.00245851935,
+   "inner": 20,
+   "compile_s": null,
+   "params": 115457,
+   "sec_rounds": [
+    0.00245487631,
+    0.00245851935,
+    0.00246035274
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "tabular_m",
+   "batch": 64,
+   "sec": 0.0005701723342611529,
+   "inner": 87,
+   "compile_s": null,
+   "params": 115457,
+   "sec_rounds": [
+    0.0005691646155059697,
+    0.0005701723342611529,
+    0.0005723454417999495
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "tabular_m",
+   "batch": 256,
+   "sec": 0.0024971262625369584,
+   "inner": 19,
+   "compile_s": null,
+   "params": 115457,
+   "sec_rounds": [
+    0.002487053151708096,
+    0.0024971262625369584,
+    0.0025032424294438803
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "tabular_m",
+   "batch": 64,
+   "sec": 0.0019548894585265466,
+   "inner": 24,
+   "compile_s": null,
+   "params": 115457,
+   "sec_rounds": [
+    0.0019477535970509052,
+    0.0019548894585265466,
+    0.0019603555649518965
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "tabular_m",
+   "batch": 256,
+   "sec": 0.0035626928521586315,
+   "inner": 14,
+   "compile_s": null,
+   "params": 115457,
+   "sec_rounds": [
+    0.0035582074644760443,
+    0.0035626928521586315,
+    0.003576839235253059
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "tabular_m",
+   "batch": 64,
+   "sec": 0.0017492825562065398,
+   "inner": 27,
+   "compile_s": 7.475534330820665,
+   "params": 115457,
+   "sec_rounds": [
+    0.0017486221456368054,
+    0.0017492825562065398,
+    0.0017600922966031012
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "tabular_m",
+   "batch": 256,
+   "sec": 0.0033282142165782197,
+   "inner": 14,
+   "compile_s": 5.162701159948483,
+   "params": 115457,
+   "sec_rounds": [
+    0.003323131357319653,
+    0.0033282142165782197,
+    0.0033419162168034484
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "rl_policy",
+   "batch": 64,
+   "sec": 4.42292617e-05,
+   "inner": 1143,
+   "compile_s": null,
+   "params": 7816,
+   "sec_rounds": [
+    4.41748543e-05,
+    4.42292617e-05,
+    4.44926417e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "rl_policy",
+   "batch": 256,
+   "sec": 0.000168972627,
+   "inner": 300,
+   "compile_s": null,
+   "params": 7816,
+   "sec_rounds": [
+    0.000165040787,
+    0.000168972627,
+    0.000169602419
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "rl_policy",
+   "batch": 64,
+   "sec": 5.03103502466891e-05,
+   "inner": 971,
+   "compile_s": null,
+   "params": 7816,
+   "sec_rounds": [
+    4.990431127335989e-05,
+    5.03103502466891e-05,
+    5.036677768085209e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "rl_policy",
+   "batch": 256,
+   "sec": 0.00017633610737643072,
+   "inner": 280,
+   "compile_s": null,
+   "params": 7816,
+   "sec_rounds": [
+    0.000174635968038014,
+    0.00017633610737643072,
+    0.00017638762728132645
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "rl_policy",
+   "batch": 64,
+   "sec": 0.0006568438404550155,
+   "inner": 75,
+   "compile_s": null,
+   "params": 7816,
+   "sec_rounds": [
+    0.0006553603614318288,
+    0.0006568438404550155,
+    0.000666477222694084
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "rl_policy",
+   "batch": 256,
+   "sec": 0.0008999281338989162,
+   "inner": 52,
+   "compile_s": null,
+   "params": 7816,
+   "sec_rounds": [
+    0.0008987127252939073,
+    0.0008999281338989162,
+    0.0009014213539879112
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "rl_policy",
+   "batch": 64,
+   "sec": 0.000580637597829684,
+   "inner": 77,
+   "compile_s": 6.125252685043961,
+   "params": 7816,
+   "sec_rounds": [
+    0.0005685917373436192,
+    0.000580637597829684,
+    0.0005809337038684774
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "rl_policy",
+   "batch": 256,
+   "sec": 0.0008127825848501304,
+   "inner": 58,
+   "compile_s": 4.160452149109915,
+   "params": 7816,
+   "sec_rounds": [
+    0.0008091226267486305,
+    0.0008127825848501304,
+    0.0008130466597060026
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "sac_actor",
+   "batch": 64,
+   "sec": 0.000802125169,
+   "inner": 60,
+   "compile_s": null,
+   "params": 166673,
+   "sec_rounds": [
+    0.000787969097,
+    0.000802125169,
+    0.000803258644
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "sac_actor",
+   "batch": 256,
+   "sec": 0.00295930263,
+   "inner": 16,
+   "compile_s": null,
+   "params": 166673,
+   "sec_rounds": [
+    0.00295711488,
+    0.00295930263,
+    0.00299476631
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "sac_actor",
+   "batch": 64,
+   "sec": 0.0008575706903276773,
+   "inner": 58,
+   "compile_s": null,
+   "params": 166673,
+   "sec_rounds": [
+    0.0008537359078348215,
+    0.0008575706903276773,
+    0.0008646907211330376
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "sac_actor",
+   "batch": 256,
+   "sec": 0.003162272134795785,
+   "inner": 15,
+   "compile_s": null,
+   "params": 166673,
+   "sec_rounds": [
+    0.003159661932537953,
+    0.003162272134795785,
+    0.003166157069305579
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "sac_actor",
+   "batch": 64,
+   "sec": 0.002219385954297402,
+   "inner": 22,
+   "compile_s": null,
+   "params": 166673,
+   "sec_rounds": [
+    0.0021873304969631134,
+    0.002219385954297402,
+    0.002225577767769044
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "sac_actor",
+   "batch": 256,
+   "sec": 0.00422557691027495,
+   "inner": 11,
+   "compile_s": null,
+   "params": 166673,
+   "sec_rounds": [
+    0.004209731557321819,
+    0.00422557691027495,
+    0.004481163637881929
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "sac_actor",
+   "batch": 64,
+   "sec": 0.0021096034805573845,
+   "inner": 23,
+   "compile_s": 6.408277368871495,
+   "params": 166673,
+   "sec_rounds": [
+    0.0020966103867344236,
+    0.0021096034805573845,
+    0.0021160752978175877
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "sac_actor",
+   "batch": 256,
+   "sec": 0.004139252557334575,
+   "inner": 11,
+   "compile_s": 4.494232483906671,
+   "params": 166673,
+   "sec_rounds": [
+    0.004138650411429505,
+    0.004139252557334575,
+    0.00414909024645264
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "sac_critic",
+   "batch": 64,
+   "sec": 0.00166118789,
+   "inner": 28,
+   "compile_s": null,
+   "params": 245889,
+   "sec_rounds": [
+    0.0016581873,
+    0.00166118789,
+    0.00167659843
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "sac_critic",
+   "batch": 256,
+   "sec": 0.00508964734,
+   "inner": 9,
+   "compile_s": null,
+   "params": 245889,
+   "sec_rounds": [
+    0.00508806945,
+    0.00508964734,
+    0.00512651155
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "sac_critic",
+   "batch": 64,
+   "sec": 0.0017870502114029868,
+   "inner": 28,
+   "compile_s": null,
+   "params": 245889,
+   "sec_rounds": [
+    0.0017782939664487327,
+    0.0017870502114029868,
+    0.0018446445185691118
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "sac_critic",
+   "batch": 256,
+   "sec": 0.005157374673419529,
+   "inner": 9,
+   "compile_s": null,
+   "params": 245889,
+   "sec_rounds": [
+    0.005155385006219149,
+    0.005157374673419529,
+    0.005192507989704609
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "sac_critic",
+   "batch": 64,
+   "sec": 0.003235146263614297,
+   "inner": 15,
+   "compile_s": null,
+   "params": 245889,
+   "sec_rounds": [
+    0.0032225994082788626,
+    0.003235146263614297,
+    0.003247080991665522
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "sac_critic",
+   "batch": 256,
+   "sec": 0.0064742315693625384,
+   "inner": 7,
+   "compile_s": null,
+   "params": 245889,
+   "sec_rounds": [
+    0.006393864285200834,
+    0.0064742315693625384,
+    0.0065733991297228
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "sac_critic",
+   "batch": 64,
+   "sec": 0.0033500530158302616,
+   "inner": 14,
+   "compile_s": 8.692627100972459,
+   "params": 245889,
+   "sec_rounds": [
+    0.0033465788666425006,
+    0.0033500530158302616,
+    0.003359550127892622
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "sac_critic",
+   "batch": 256,
+   "sec": 0.007227241139238079,
+   "inner": 6,
+   "compile_s": 5.404025560012087,
+   "params": 245889,
+   "sec_rounds": [
+    0.007197673160893221,
+    0.007227241139238079,
+    0.007355390349403024
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "two_tower",
+   "batch": 64,
+   "sec": 0.000736409173,
+   "inner": 64,
+   "compile_s": null,
+   "params": 132097,
+   "sec_rounds": [
+    0.000731755721,
+    0.000736409173,
+    0.000737387909
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "two_tower",
+   "batch": 256,
+   "sec": 0.00333155847,
+   "inner": 15,
+   "compile_s": null,
+   "params": 132097,
+   "sec_rounds": [
+    0.00332655919,
+    0.00333155847,
+    0.00333957592
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "two_tower",
+   "batch": 64,
+   "sec": 0.0008100110491545036,
+   "inner": 58,
+   "compile_s": null,
+   "params": 132097,
+   "sec_rounds": [
+    0.0008081401366803605,
+    0.0008100110491545036,
+    0.0008223788897422227
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "two_tower",
+   "batch": 256,
+   "sec": 0.003416714640999479,
+   "inner": 14,
+   "compile_s": null,
+   "params": 132097,
+   "sec_rounds": [
+    0.003401542647874781,
+    0.003416714640999479,
+    0.003417139357355024
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "two_tower",
+   "batch": 64,
+   "sec": 0.002335654804483056,
+   "inner": 21,
+   "compile_s": null,
+   "params": 132097,
+   "sec_rounds": [
+    0.0023347779992036522,
+    0.002335654804483056,
+    0.0023740703007206322
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "two_tower",
+   "batch": 256,
+   "sec": 0.004386121616698801,
+   "inner": 10,
+   "compile_s": null,
+   "params": 132097,
+   "sec_rounds": [
+    0.004361682275140827,
+    0.004386121616698801,
+    0.0044080717277459125
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "two_tower",
+   "batch": 64,
+   "sec": 0.0023029206231946035,
+   "inner": 21,
+   "compile_s": 9.08356733690016,
+   "params": 132097,
+   "sec_rounds": [
+    0.0022903520037375743,
+    0.0023029206231946035,
+    0.00230569609751304
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "two_tower",
+   "batch": 256,
+   "sec": 0.004892783989715908,
+   "inner": 9,
+   "compile_s": 6.724917861865833,
+   "params": 132097,
+   "sec_rounds": [
+    0.004877445650183492,
+    0.004892783989715908,
+    0.004895893675792549
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "deep_tree",
+   "batch": 64,
+   "sec": 4.05834365e-05,
+   "inner": 1251,
+   "compile_s": null,
+   "params": 6145,
+   "sec_rounds": [
+    4.03837069e-05,
+    4.05834365e-05,
+    4.17326149e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "deep_tree",
+   "batch": 256,
+   "sec": 0.000144963424,
+   "inner": 335,
+   "compile_s": null,
+   "params": 6145,
+   "sec_rounds": [
+    0.000144929424,
+    0.000144963424,
+    0.000144979145
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "deep_tree",
+   "batch": 64,
+   "sec": 4.650903474017281e-05,
+   "inner": 1070,
+   "compile_s": null,
+   "params": 6145,
+   "sec_rounds": [
+    4.64147132522655e-05,
+    4.650903474017281e-05,
+    4.7905100117846626e-05
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "deep_tree",
+   "batch": 256,
+   "sec": 0.00015132271895004857,
+   "inner": 310,
+   "compile_s": null,
+   "params": 6145,
+   "sec_rounds": [
+    0.00015091498052798114,
+    0.00015132271895004857,
+    0.00015552742254277248
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "deep_tree",
+   "batch": 64,
+   "sec": 0.0015446837736113417,
+   "inner": 31,
+   "compile_s": null,
+   "params": 6145,
+   "sec_rounds": [
+    0.0015303146755022386,
+    0.0015446837736113417,
+    0.0015489558328784282
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "deep_tree",
+   "batch": 256,
+   "sec": 0.0017540931003168225,
+   "inner": 28,
+   "compile_s": null,
+   "params": 6145,
+   "sec_rounds": [
+    0.001730301337123945,
+    0.0017540931003168225,
+    0.0017557362939610525
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "deep_tree",
+   "batch": 64,
+   "sec": 0.0009797505312124078,
+   "inner": 49,
+   "compile_s": 11.217605432961136,
+   "params": 6145,
+   "sec_rounds": [
+    0.0009794680221120314,
+    0.0009797505312124078,
+    0.0009911364296033066
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "deep_tree",
+   "batch": 256,
+   "sec": 0.0013119924083553455,
+   "inner": 37,
+   "compile_s": 6.599006952950731,
+   "params": 6145,
+   "sec_rounds": [
+    0.00130872886527229,
+    0.0013119924083553455,
+    0.0013170762758818455
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "mnist_mlp",
+   "batch": 64,
+   "sec": 0.00125035003,
+   "inner": 38,
+   "compile_s": null,
+   "params": 235146,
+   "sec_rounds": [
+    0.00124741141,
+    0.00125035003,
+    0.00125496458
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "mnist_mlp",
+   "batch": 256,
+   "sec": 0.00389249534,
+   "inner": 12,
+   "compile_s": null,
+   "params": 235146,
+   "sec_rounds": [
+    0.00388699725,
+    0.00389249534,
+    0.00390933142
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "mnist_mlp",
+   "batch": 64,
+   "sec": 0.0014440593176654408,
+   "inner": 35,
+   "compile_s": null,
+   "params": 235146,
+   "sec_rounds": [
+    0.0014431260278797708,
+    0.0014440593176654408,
+    0.001465204002504999
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "mnist_mlp",
+   "batch": 256,
+   "sec": 0.003895094501785934,
+   "inner": 12,
+   "compile_s": null,
+   "params": 235146,
+   "sec_rounds": [
+    0.003880251160201927,
+    0.003895094501785934,
+    0.003916119923815131
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "mnist_mlp",
+   "batch": 64,
+   "sec": 0.0026677523273974657,
+   "inner": 18,
+   "compile_s": null,
+   "params": 235146,
+   "sec_rounds": [
+    0.0026653491141688493,
+    0.0026677523273974657,
+    0.002777070752071107
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "mnist_mlp",
+   "batch": 256,
+   "sec": 0.005116286454722285,
+   "inner": 9,
+   "compile_s": null,
+   "params": 235146,
+   "sec_rounds": [
+    0.005107084108102653,
+    0.005116286454722285,
+    0.005157406002076136
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "mnist_mlp",
+   "batch": 64,
+   "sec": 0.002604139748176462,
+   "inner": 19,
+   "compile_s": 7.400611536111683,
+   "params": 235146,
+   "sec_rounds": [
+    0.0025961361178714368,
+    0.002604139748176462,
+    0.0026203455636277795
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "mnist_mlp",
+   "batch": 256,
+   "sec": 0.004996193200349807,
+   "inner": 10,
+   "compile_s": 5.314168451819569,
+   "params": 235146,
+   "sec_rounds": [
+    0.004969265104995834,
+    0.004996193200349807,
+    0.005007146443757746
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "mnist_wide",
+   "batch": 64,
+   "sec": 0.017409977,
+   "inner": 2,
+   "compile_s": null,
+   "params": 1863690,
+   "sec_rounds": [
+    0.0173937464,
+    0.017409977,
+    0.0175511515
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "mnist_wide",
+   "batch": 256,
+   "sec": 0.0372510538,
+   "inner": 1,
+   "compile_s": null,
+   "params": 1863690,
+   "sec_rounds": [
+    0.0371627379,
+    0.0372510538,
+    0.0374341679
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "mnist_wide",
+   "batch": 64,
+   "sec": 0.01732283050660044,
+   "inner": 2,
+   "compile_s": null,
+   "params": 1863690,
+   "sec_rounds": [
+    0.017308570444583893,
+    0.01732283050660044,
+    0.01739234058186412
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "mnist_wide",
+   "batch": 256,
+   "sec": 0.037646072916686535,
+   "inner": 1,
+   "compile_s": null,
+   "params": 1863690,
+   "sec_rounds": [
+    0.03756521292962134,
+    0.037646072916686535,
+    0.03805359895341098
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "mnist_wide",
+   "batch": 64,
+   "sec": 0.01940322306472808,
+   "inner": 2,
+   "compile_s": null,
+   "params": 1863690,
+   "sec_rounds": [
+    0.019269975484348834,
+    0.01940322306472808,
+    0.019507262506522238
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "mnist_wide",
+   "batch": 256,
+   "sec": 0.04284050897695124,
+   "inner": 1,
+   "compile_s": null,
+   "params": 1863690,
+   "sec_rounds": [
+    0.0424683999735862,
+    0.04284050897695124,
+    0.04288800898939371
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "mnist_wide",
+   "batch": 64,
+   "sec": 0.01676413300447166,
+   "inner": 2,
+   "compile_s": 6.816072374815121,
+   "params": 1863690,
+   "sec_rounds": [
+    0.016578031626219552,
+    0.01676413300447166,
+    0.016789717483334243
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "mnist_wide",
+   "batch": 256,
+   "sec": 0.04026114894077182,
+   "inner": 1,
+   "compile_s": 4.819674330065027,
+   "params": 1863690,
+   "sec_rounds": [
+    0.040227169170975685,
+    0.04026114894077182,
+    0.04034501104615629
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "autoencoder",
+   "batch": 64,
+   "sec": 0.00761135683,
+   "inner": 6,
+   "compile_s": null,
+   "params": 944176,
+   "sec_rounds": [
+    0.00759148384,
+    0.00761135683,
+    0.00767017315
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "autoencoder",
+   "batch": 256,
+   "sec": 0.0180856206,
+   "inner": 2,
+   "compile_s": null,
+   "params": 944176,
+   "sec_rounds": [
+    0.0180247064,
+    0.0180856206,
+    0.0180914665
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "autoencoder",
+   "batch": 64,
+   "sec": 0.0077519963184992475,
+   "inner": 6,
+   "compile_s": null,
+   "params": 944176,
+   "sec_rounds": [
+    0.007722742312277357,
+    0.0077519963184992475,
+    0.007798235164955258
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "autoencoder",
+   "batch": 256,
+   "sec": 0.018507686560042202,
+   "inner": 2,
+   "compile_s": null,
+   "params": 944176,
+   "sec_rounds": [
+    0.018471008981578052,
+    0.018507686560042202,
+    0.018664813018403947
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "autoencoder",
+   "batch": 64,
+   "sec": 0.009983583772554993,
+   "inner": 5,
+   "compile_s": null,
+   "params": 944176,
+   "sec_rounds": [
+    0.009978314954787492,
+    0.009983583772554993,
+    0.010006060998421162
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "autoencoder",
+   "batch": 256,
+   "sec": 0.02205449645407498,
+   "inner": 2,
+   "compile_s": null,
+   "params": 944176,
+   "sec_rounds": [
+    0.021939214086160064,
+    0.02205449645407498,
+    0.022227264009416103
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "autoencoder",
+   "batch": 64,
+   "sec": 0.008901511784642935,
+   "inner": 5,
+   "compile_s": 10.682851733174175,
+   "params": 944176,
+   "sec_rounds": [
+    0.008886562613770365,
+    0.008901511784642935,
+    0.008933797618374229
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "autoencoder",
+   "batch": 256,
+   "sec": 0.020626727025955915,
+   "inner": 2,
+   "compile_s": 6.7191806400660425,
+   "params": 944176,
+   "sec_rounds": [
+    0.02055172750260681,
+    0.020626727025955915,
+    0.020773389493115246
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "ffn_block",
+   "batch": 64,
+   "sec": 0.0196799375,
+   "inner": 2,
+   "compile_s": null,
+   "params": 2099712,
+   "sec_rounds": [
+    0.0195272105,
+    0.0196799375,
+    0.019789041
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "ffn_block",
+   "batch": 256,
+   "sec": 0.045574988,
+   "inner": 1,
+   "compile_s": null,
+   "params": 2099712,
+   "sec_rounds": [
+    0.0451410851,
+    0.045574988,
+    0.0456562231
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "ffn_block",
+   "batch": 64,
+   "sec": 0.019845103030093014,
+   "inner": 2,
+   "compile_s": null,
+   "params": 2099712,
+   "sec_rounds": [
+    0.01979892305098474,
+    0.019845103030093014,
+    0.019870365969836712
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "ffn_block",
+   "batch": 256,
+   "sec": 0.047791930846869946,
+   "inner": 1,
+   "compile_s": null,
+   "params": 2099712,
+   "sec_rounds": [
+    0.04779099184088409,
+    0.047791930846869946,
+    0.047932351008057594
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "ffn_block",
+   "batch": 64,
+   "sec": 0.02353511704131961,
+   "inner": 2,
+   "compile_s": null,
+   "params": 2099712,
+   "sec_rounds": [
+    0.022606386919505894,
+    0.02353511704131961,
+    0.02679110551252961
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "ffn_block",
+   "batch": 256,
+   "sec": 0.04957356886006892,
+   "inner": 1,
+   "compile_s": null,
+   "params": 2099712,
+   "sec_rounds": [
+    0.049456336069852114,
+    0.04957356886006892,
+    0.049841596046462655
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "ffn_block",
+   "batch": 64,
+   "sec": 0.019558141008019447,
+   "inner": 2,
+   "compile_s": 5.501241777092218,
+   "params": 2099712,
+   "sec_rounds": [
+    0.01954063295852393,
+    0.019558141008019447,
+    0.019649719004519284
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "ffn_block",
+   "batch": 256,
+   "sec": 0.04663903685286641,
+   "inner": 1,
+   "compile_s": 3.3890709339175373,
+   "params": 2099712,
+   "sec_rounds": [
+    0.046389513183385134,
+    0.04663903685286641,
+    0.047608037013560534
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "nerf",
+   "batch": 64,
+   "sec": 0.00429843571,
+   "inner": 11,
+   "compile_s": null,
+   "params": 477956,
+   "sec_rounds": [
+    0.0042969809,
+    0.00429843571,
+    0.00431016572
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "nerf",
+   "batch": 256,
+   "sec": 0.0107449228,
+   "inner": 4,
+   "compile_s": null,
+   "params": 477956,
+   "sec_rounds": [
+    0.0107432535,
+    0.0107449228,
+    0.0107565105
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "nerf",
+   "batch": 64,
+   "sec": 0.004559614206664264,
+   "inner": 10,
+   "compile_s": null,
+   "params": 477956,
+   "sec_rounds": [
+    0.00455698671285063,
+    0.004559614206664264,
+    0.004579996647821231
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "nerf",
+   "batch": 256,
+   "sec": 0.010810076026245952,
+   "inner": 4,
+   "compile_s": null,
+   "params": 477956,
+   "sec_rounds": [
+    0.010806751495692879,
+    0.010810076026245952,
+    0.010840898787137121
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "nerf",
+   "batch": 64,
+   "sec": 0.0059615178615786135,
+   "inner": 8,
+   "compile_s": null,
+   "params": 477956,
+   "sec_rounds": [
+    0.0059453651192598045,
+    0.0059615178615786135,
+    0.005967196251731366
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "nerf",
+   "batch": 256,
+   "sec": 0.012415265024174005,
+   "inner": 4,
+   "compile_s": null,
+   "params": 477956,
+   "sec_rounds": [
+    0.012363536516204476,
+    0.012415265024174005,
+    0.012436507502570748
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "nerf",
+   "batch": 64,
+   "sec": 0.0055058184338526595,
+   "inner": 9,
+   "compile_s": 8.906893673120067,
+   "params": 477956,
+   "sec_rounds": [
+    0.005503299122210592,
+    0.0055058184338526595,
+    0.005521738332592779
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "nerf",
+   "batch": 256,
+   "sec": 0.011849561473354697,
+   "inner": 4,
+   "compile_s": 4.699365356937051,
+   "params": 477956,
+   "sec_rounds": [
+    0.011789018230047077,
+    0.011849561473354697,
+    0.011854492768179625
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "pinn",
+   "batch": 64,
+   "sec": 0.000133647577,
+   "inner": 267,
+   "compile_s": null,
+   "params": 21121,
+   "sec_rounds": [
+    0.000133427172,
+    0.000133647577,
+    0.00013424654
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "cpp",
+   "arch": "pinn",
+   "batch": 256,
+   "sec": 0.000509395504,
+   "inner": 97,
+   "compile_s": null,
+   "params": 21121,
+   "sec_rounds": [
+    0.000508568297,
+    0.000509395504,
+    0.000514879677
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "pinn",
+   "batch": 64,
+   "sec": 0.00013902122656511175,
+   "inner": 362,
+   "compile_s": null,
+   "params": 21121,
+   "sec_rounds": [
+    0.0001386562908689181,
+    0.00013902122656511175,
+    0.00013937001903466682
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "fastmlp",
+   "arch": "pinn",
+   "batch": 256,
+   "sec": 0.0005354512710861551,
+   "inner": 96,
+   "compile_s": null,
+   "params": 21121,
+   "sec_rounds": [
+    0.0005303813526010576,
+    0.0005354512710861551,
+    0.0005414523459690553
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "pinn",
+   "batch": 64,
+   "sec": 0.0013138398125364973,
+   "inner": 37,
+   "compile_s": null,
+   "params": 21121,
+   "sec_rounds": [
+    0.0012994269978859135,
+    0.0013138398125364973,
+    0.0013188502965243282
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch",
+   "arch": "pinn",
+   "batch": 256,
+   "sec": 0.0020047837460879236,
+   "inner": 24,
+   "compile_s": null,
+   "params": 21121,
+   "sec_rounds": [
+    0.0019818945438601077,
+    0.0020047837460879236,
+    0.0020073604149123034
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "pinn",
+   "batch": 64,
+   "sec": 0.0009722103060660314,
+   "inner": 49,
+   "compile_s": 7.95055887196213,
+   "params": 21121,
+   "sec_rounds": [
+    0.0009673637803643941,
+    0.0009722103060660314,
+    0.0009844881026264355
+   ]
+  },
+  {
+   "mode": "train",
+   "impl": "torch_compile",
+   "arch": "pinn",
+   "batch": 256,
+   "sec": 0.001605062000453472,
+   "inner": 30,
+   "compile_s": 4.884202312910929,
+   "params": 21121,
+   "sec_rounds": [
+    0.0016010513373961052,
+    0.001605062000453472,
+    0.001613223731207351
+   ]
+  }
+ ]
+}
