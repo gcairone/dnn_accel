@@ -237,4 +237,39 @@ TEST(zero_grad_resets_accumulators) {
   for (int i = 0; i < 2; i++) ASSERT_EQ(layer.bias_grad()[i], 0.0f);
 }
 
+// zero_grad() is deferred: the next backward overwrites the stale gradient
+// instead of accumulating onto it. Nothing reads the gradient between the two
+// here, so the overwrite path -- not the on-demand zero fill the test above
+// hits -- is what produces the result. Shape spans several 6-row dW tiles, a
+// K-remainder and a non-multiple-of-8 bias width.
+TEST(backward_after_zero_grad_overwrites_and_otherwise_accumulates) {
+  LinearConfig cfg;
+  cfg.in_features = 21;
+  cfg.out_features = 13;
+  cfg.max_batch = 5;
+  cfg.activation = ActivationKind::Tanh;
+  cfg.seed = 9;
+  Linear layer(cfg), twin(cfg);
+
+  std::vector<float> x(5 * 21), dOut(5 * 13);
+  for (size_t i = 0; i < x.size(); i++) x[i] = 0.05f * (float)((int)(i % 11) - 5);
+  for (size_t i = 0; i < dOut.size(); i++) dOut[i] = 0.1f * (float)((int)(i % 7) - 3);
+  const size_t nW = 21 * 13;
+
+  twin.forward(x.data(), 5);
+  twin.backward(dOut.data(), 5);  // one pass from the constructor's zeros
+  std::vector<float> g(twin.weight_grad(), twin.weight_grad() + nW);
+  std::vector<float> gb(twin.bias_grad(), twin.bias_grad() + 13);
+
+  layer.forward(x.data(), 5);
+  layer.backward(dOut.data(), 5);
+  layer.backward(dOut.data(), 5);  // no zero_grad: accumulates to 2g
+  for (size_t i = 0; i < nW; i++) ASSERT_NEAR(layer.weight_grad()[i], 2.0f * g[i], 1e-5);
+
+  layer.zero_grad();
+  layer.backward(dOut.data(), 5);  // overwrites: g, not 3g
+  for (size_t i = 0; i < nW; i++) ASSERT_EQ(layer.weight_grad()[i], g[i]);
+  for (int i = 0; i < 13; i++) ASSERT_EQ(layer.bias_grad()[i], gb[i]);
+}
+
 FASTMLP_TEST_MAIN()

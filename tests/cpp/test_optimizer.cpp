@@ -4,6 +4,7 @@
 // truth fed into the formula -- this isolates "does the update rule match
 // the math" from "is the gradient correct" (already covered elsewhere).
 #include "fastmlp/optimizer.hpp"
+#include "fastmlp/simd/gemm_kernel.hpp"
 
 #include <cmath>
 #include <vector>
@@ -209,6 +210,50 @@ TEST(sgd_weight_decay_matches_formula) {
   for (int j = 0; j < 6; j++) {
     double expected = W0[j] - lr * (dW[j] + weight_decay * W0[j]);
     ASSERT_NEAR(W1[j], expected, 1e-5);
+  }
+}
+
+// step() repacks each layer's forward copy of W block by block, inside the
+// update (Linear::update_weights) -- nothing else marks it stale any more. If
+// a block were skipped or misplaced, the batched forward (packed W) would
+// silently disagree with the weights the optimizer reports. Checked against
+// an unpacked reference forward and against the batch-1 path (which reads W
+// directly), on layers that need several row blocks: 130 rows at K=40
+// (56-row blocks) and 37 rows at K=300 (8-row blocks), none a multiple of 8.
+TEST(step_keeps_packed_forward_weights_in_sync) {
+  for (auto sizes : {std::vector<int>{40, 130, 5}, std::vector<int>{300, 37, 3}}) {
+    ModuleConfig cfg;
+    cfg.layer_sizes = sizes;
+    cfg.activation = ActivationKind::Identity;
+    cfg.max_batch = 4;
+    cfg.seed = 21;
+    Module model(cfg);
+    Adam opt(model, /*lr=*/0.05f);
+
+    std::vector<float> x(4 * sizes[0]), dOut(4 * sizes.back());
+    fill_pattern(x, 7, 3);
+    fill_pattern(dOut, 5, 2);
+    for (int it = 0; it < 3; it++) {
+      opt.zero_grad();
+      model.forward({x.data()}, 4);
+      model.backward(dOut.data(), 4);
+      opt.step();
+    }
+
+    // Reference: the same two layers through the unpacked scalar GEMM, from
+    // the weights as the optimizer left them.
+    const auto& L0 = model.layers()[0];
+    const auto& L1 = model.layers()[1];
+    std::vector<float> h(4 * sizes[1]), ref(4 * sizes[2]);
+    fastmlp::simd::scalar::gemm_xwt_f32(x.data(), L0.weights(), L0.bias(), h.data(), 4, sizes[0],
+                                         sizes[1]);
+    fastmlp::simd::scalar::gemm_xwt_f32(h.data(), L1.weights(), L1.bias(), ref.data(), 4,
+                                         sizes[1], sizes[2]);
+
+    const float* y = model.forward({x.data()}, 4);
+    for (int i = 0; i < 4 * sizes[2]; i++) ASSERT_NEAR(y[i], ref[i], 1e-4);
+    const float* y1 = model.forward({x.data()}, 1);
+    for (int i = 0; i < sizes[2]; i++) ASSERT_NEAR(y1[i], ref[i], 1e-4);
   }
 }
 

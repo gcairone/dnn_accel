@@ -7,11 +7,10 @@ path pays for a computational graph, dynamic dispatch, and a general
 thread-pool BLAS that a small-to-medium, statically-shaped MLP doesn't need.
 This library skips all of that and, on this specific CPU, beats PyTorch's
 single-thread throughput on every training configuration measured so far
-(eager PyTorch; against `torch.compile` everywhere but the two ~2M-parameter
-models, which are at parity), and on inference up to batch 128 — by 1.04x to
-170x, most where per-call overhead dominates. At batch 1024 on 100k+
-parameter models the two are at parity (0.86–1.06x; MKL's large-batch GEMM
-catches up).
+(eager PyTorch and `torch.compile` alike, by 1.11x to 38x), and on inference
+up to batch 128 — most where per-call overhead dominates. At batch 1024 on
+100k+ parameter models the two are at parity (0.84–1.07x; MKL's large-batch
+GEMM catches up).
 
 Full design rationale: [`idea.md`](idea.md). Intended API by example:
 [`usages.md`](usages.md). Repo layout, file-by-file rationale, and

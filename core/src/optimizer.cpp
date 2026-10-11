@@ -50,8 +50,10 @@ void SGD::step() {
     Linear* l = params_[i];
     if (l->is_frozen()) continue;
 
-    sgd_update(l->weights(), l->weight_grad(), vel_W_[i].data(),
-                l->out_features() * l->in_features(), lr_, momentum_, weight_decay_);
+    float* vel = vel_W_[i].data();
+    l->update_weights([&](float* w, const float* g, size_t off, size_t n) {
+      sgd_update(w, g, vel + off, (int)n, lr_, momentum_, weight_decay_);
+    });
     sgd_update(l->bias(), l->bias_grad(), vel_b_[i].data(), l->out_features(), lr_, momentum_,
                 /*weight_decay=*/0.0f);
   }
@@ -121,9 +123,12 @@ void Adam::step() {
     Linear* l = params_[i];
     if (l->is_frozen()) continue;
 
-    adam_update(l->weights(), l->weight_grad(), m_W_[i].data(), v_W_[i].data(),
-                 l->out_features() * l->in_features(), lr_, beta1_, beta2_, eps_,
-                 weight_decay_, inv_bc1, inv_bc2);
+    float* m = m_W_[i].data();
+    float* v = v_W_[i].data();
+    l->update_weights([&](float* w, const float* g, size_t off, size_t n) {
+      adam_update(w, g, m + off, v + off, (int)n, lr_, beta1_, beta2_, eps_, weight_decay_,
+                   inv_bc1, inv_bc2);
+    });
     adam_update(l->bias(), l->bias_grad(), m_b_[i].data(), v_b_[i].data(), l->out_features(),
                  lr_, beta1_, beta2_, eps_, /*weight_decay=*/0.0f, inv_bc1, inv_bc2);
   }

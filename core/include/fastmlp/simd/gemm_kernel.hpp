@@ -79,7 +79,7 @@ void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K,
 void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B,
                         int K, int N);
 
-void bias_grad_accum_f32(const float* dY, float* db, int B, int N);
+void bias_grad_accum_f32(const float* dY, float* db, int B, int N, bool accumulate = true);
 
 // dst[c*ld_dst + r] = src[r*src_cols + c], i.e. a plain transpose of a
 // (src_rows, src_cols) row-major matrix into (src_cols, ld_dst) row-major.
@@ -89,6 +89,10 @@ void bias_grad_accum_f32(const float* dY, float* db, int B, int N);
 //   pack W(N,K)  -> Wp(K, ldWp)  for gemm_xwtp_f32
 //   pack dY(B,N) -> dYt(N, B)    for gemm_dW_accum_t_f32
 void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols, int ld_dst);
+// Rows [r0, r1) of src into columns [r0, r1) of dst, no padding written --
+// the building block of pack_transpose_f32, exposed so Linear can repack W a
+// row block at a time while an optimizer update still has it in L1.
+void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst);
 
 // Y(B,N) = X(B,K) @ Wp + bias, Wp being W packed by pack_transpose_f32.
 void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias,
@@ -100,8 +104,14 @@ void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias,
 // a power-of-two row stride (N=256 -> 1024 B) that hits only 4 of the L1's
 // 64 sets, thrashing an 8-way cache with 128 live lines. Transposing dY
 // first turns those strided broadcasts into sequential streams.
+//
+// accumulate=false overwrites dW instead (dW = dYt @ X), and likewise for
+// bias_grad_accum_f32: the first backward after zero_grad() takes that path,
+// so the zeroing pass and the read of the old dW both disappear -- on a model
+// whose gradients live in DRAM, dW is read at a stride of one row per tile
+// and that read is what held the kernel to ~37% of peak.
 void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                          float* pack);
+                          float* pack, bool accumulate = true);
 
 }  // namespace scalar
 
@@ -149,15 +159,16 @@ void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K,
 void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B,
                         int K, int N);
 
-void bias_grad_accum_f32(const float* dY, float* db, int B, int N);
+void bias_grad_accum_f32(const float* dY, float* db, int B, int N, bool accumulate = true);
 
 void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols, int ld_dst);
+void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst);
 
 void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias,
                     float* Y, int B, int K, int N, int ldWp);
 
 void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                          float* pack);
+                          float* pack, bool accumulate = true);
 
 }  // namespace avx2
 

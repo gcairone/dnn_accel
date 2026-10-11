@@ -354,12 +354,12 @@ inline void dx_k_block_masked(const float* dY, const float* W, float* dX, int B,
 // 16-wide scratch at stride 16 -- same choice dx_tile2 makes over W.
 template <int NR>
 inline void dw_tile_t2(const float* Xsrc, int ldX, const float* dYt, float* dW, int n0, int B,
-                        int K, int N, int k0) {
+                        int K, int N, int k0, bool acc) {
   __m256 a0[NR], a1[NR];
   for (int j = 0; j < NR; j++) {
     const float* d = dW + (size_t)(n0 + j) * K + k0;
-    a0[j] = _mm256_loadu_ps(d);
-    a1[j] = _mm256_loadu_ps(d + kVW);
+    a0[j] = acc ? _mm256_loadu_ps(d) : _mm256_setzero_ps();
+    a1[j] = acc ? _mm256_loadu_ps(d + kVW) : _mm256_setzero_ps();
   }
 
   const float* dyt[NR];
@@ -385,9 +385,10 @@ inline void dw_tile_t2(const float* Xsrc, int ldX, const float* dYt, float* dW, 
 
 template <int NR>
 inline void dw_tile_t1(const float* X, const float* dYt, float* dW, int n0, int B, int K, int N,
-                        int k0) {
+                        int k0, bool acc) {
   __m256 a0[NR];
-  for (int j = 0; j < NR; j++) a0[j] = _mm256_loadu_ps(dW + (size_t)(n0 + j) * K + k0);
+  for (int j = 0; j < NR; j++)
+    a0[j] = acc ? _mm256_loadu_ps(dW + (size_t)(n0 + j) * K + k0) : _mm256_setzero_ps();
 
   const float* dyt[NR];
   for (int j = 0; j < NR; j++) dyt[j] = dYt + (size_t)(n0 + j) * B;
@@ -404,10 +405,10 @@ inline void dw_tile_t1(const float* X, const float* dYt, float* dW, int n0, int 
 
 template <int NR>
 inline void dw_tile_t_masked(const float* X, const float* dYt, float* dW, int n0, int B, int K,
-                              int N, int k0, __m256i mask) {
+                              int N, int k0, __m256i mask, bool acc) {
   __m256 a[NR];
   for (int j = 0; j < NR; j++)
-    a[j] = _mm256_maskload_ps(dW + (size_t)(n0 + j) * K + k0, mask);
+    a[j] = acc ? _mm256_maskload_ps(dW + (size_t)(n0 + j) * K + k0, mask) : _mm256_setzero_ps();
 
   const float* dyt[NR];
   for (int j = 0; j < NR; j++) dyt[j] = dYt + (size_t)(n0 + j) * B;
@@ -425,45 +426,45 @@ inline void dw_tile_t_masked(const float* X, const float* dYt, float* dW, int n0
 }
 
 inline void dw_t_k_block2(const float* Xsrc, int ldX, const float* dYt, float* dW, int B, int K,
-                           int N, int k0) {
+                           int N, int k0, bool acc) {
   int n0 = 0;
   for (; n0 + kBwdMR <= N; n0 += kBwdMR)
-    dw_tile_t2<kBwdMR>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0);
+    dw_tile_t2<kBwdMR>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0, acc);
   switch (N - n0) {
-    case 5: dw_tile_t2<5>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
-    case 4: dw_tile_t2<4>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
-    case 3: dw_tile_t2<3>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
-    case 2: dw_tile_t2<2>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
-    case 1: dw_tile_t2<1>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0); break;
+    case 5: dw_tile_t2<5>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 4: dw_tile_t2<4>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 3: dw_tile_t2<3>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 2: dw_tile_t2<2>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 1: dw_tile_t2<1>(Xsrc, ldX, dYt, dW, n0, B, K, N, k0, acc); break;
     default: break;
   }
 }
 
 inline void dw_t_k_block1(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                           int k0) {
+                           int k0, bool acc) {
   int n0 = 0;
-  for (; n0 + kBwdMR <= N; n0 += kBwdMR) dw_tile_t1<kBwdMR>(X, dYt, dW, n0, B, K, N, k0);
+  for (; n0 + kBwdMR <= N; n0 += kBwdMR) dw_tile_t1<kBwdMR>(X, dYt, dW, n0, B, K, N, k0, acc);
   switch (N - n0) {
-    case 5: dw_tile_t1<5>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 4: dw_tile_t1<4>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 3: dw_tile_t1<3>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 2: dw_tile_t1<2>(X, dYt, dW, n0, B, K, N, k0); break;
-    case 1: dw_tile_t1<1>(X, dYt, dW, n0, B, K, N, k0); break;
+    case 5: dw_tile_t1<5>(X, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 4: dw_tile_t1<4>(X, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 3: dw_tile_t1<3>(X, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 2: dw_tile_t1<2>(X, dYt, dW, n0, B, K, N, k0, acc); break;
+    case 1: dw_tile_t1<1>(X, dYt, dW, n0, B, K, N, k0, acc); break;
     default: break;
   }
 }
 
 inline void dw_t_k_block_masked(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                                 int k0, __m256i mask) {
+                                 int k0, __m256i mask, bool acc) {
   int n0 = 0;
   for (; n0 + kBwdMR <= N; n0 += kBwdMR)
-    dw_tile_t_masked<kBwdMR>(X, dYt, dW, n0, B, K, N, k0, mask);
+    dw_tile_t_masked<kBwdMR>(X, dYt, dW, n0, B, K, N, k0, mask, acc);
   switch (N - n0) {
-    case 5: dw_tile_t_masked<5>(X, dYt, dW, n0, B, K, N, k0, mask); break;
-    case 4: dw_tile_t_masked<4>(X, dYt, dW, n0, B, K, N, k0, mask); break;
-    case 3: dw_tile_t_masked<3>(X, dYt, dW, n0, B, K, N, k0, mask); break;
-    case 2: dw_tile_t_masked<2>(X, dYt, dW, n0, B, K, N, k0, mask); break;
-    case 1: dw_tile_t_masked<1>(X, dYt, dW, n0, B, K, N, k0, mask); break;
+    case 5: dw_tile_t_masked<5>(X, dYt, dW, n0, B, K, N, k0, mask, acc); break;
+    case 4: dw_tile_t_masked<4>(X, dYt, dW, n0, B, K, N, k0, mask, acc); break;
+    case 3: dw_tile_t_masked<3>(X, dYt, dW, n0, B, K, N, k0, mask, acc); break;
+    case 2: dw_tile_t_masked<2>(X, dYt, dW, n0, B, K, N, k0, mask, acc); break;
+    case 1: dw_tile_t_masked<1>(X, dYt, dW, n0, B, K, N, k0, mask, acc); break;
     default: break;
   }
 }
@@ -483,30 +484,58 @@ void gemm_xwt_f32(const float* X, const float* W, const float* bias, float* Y,
   }
 }
 
-void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols, int ld_dst) {
-  // Blocked 8x8 so both sides touch whole cache lines -- an
-  // element-at-a-time transpose of a 200k-element matrix is otherwise pure
-  // cache-miss traffic on the strided side.
+// 8x8 in-register transpose: s is 8 rows at stride ls, d receives them as 8
+// columns at stride ld.
+inline void transpose8x8(const float* s, size_t ls, float* d, size_t ld) {
+  __m256 r0 = _mm256_loadu_ps(s), r1 = _mm256_loadu_ps(s + ls);
+  __m256 r2 = _mm256_loadu_ps(s + 2 * ls), r3 = _mm256_loadu_ps(s + 3 * ls);
+  __m256 r4 = _mm256_loadu_ps(s + 4 * ls), r5 = _mm256_loadu_ps(s + 5 * ls);
+  __m256 r6 = _mm256_loadu_ps(s + 6 * ls), r7 = _mm256_loadu_ps(s + 7 * ls);
+  __m256 t0 = _mm256_unpacklo_ps(r0, r1), t1 = _mm256_unpackhi_ps(r0, r1);
+  __m256 t2 = _mm256_unpacklo_ps(r2, r3), t3 = _mm256_unpackhi_ps(r2, r3);
+  __m256 t4 = _mm256_unpacklo_ps(r4, r5), t5 = _mm256_unpackhi_ps(r4, r5);
+  __m256 t6 = _mm256_unpacklo_ps(r6, r7), t7 = _mm256_unpackhi_ps(r6, r7);
+  __m256 u0 = _mm256_shuffle_ps(t0, t2, 0x44), u1 = _mm256_shuffle_ps(t0, t2, 0xEE);
+  __m256 u2 = _mm256_shuffle_ps(t1, t3, 0x44), u3 = _mm256_shuffle_ps(t1, t3, 0xEE);
+  __m256 u4 = _mm256_shuffle_ps(t4, t6, 0x44), u5 = _mm256_shuffle_ps(t4, t6, 0xEE);
+  __m256 u6 = _mm256_shuffle_ps(t5, t7, 0x44), u7 = _mm256_shuffle_ps(t5, t7, 0xEE);
+  _mm256_storeu_ps(d, _mm256_permute2f128_ps(u0, u4, 0x20));
+  _mm256_storeu_ps(d + ld, _mm256_permute2f128_ps(u1, u5, 0x20));
+  _mm256_storeu_ps(d + 2 * ld, _mm256_permute2f128_ps(u2, u6, 0x20));
+  _mm256_storeu_ps(d + 3 * ld, _mm256_permute2f128_ps(u3, u7, 0x20));
+  _mm256_storeu_ps(d + 4 * ld, _mm256_permute2f128_ps(u0, u4, 0x31));
+  _mm256_storeu_ps(d + 5 * ld, _mm256_permute2f128_ps(u1, u5, 0x31));
+  _mm256_storeu_ps(d + 6 * ld, _mm256_permute2f128_ps(u2, u6, 0x31));
+  _mm256_storeu_ps(d + 7 * ld, _mm256_permute2f128_ps(u3, u7, 0x31));
+}
+
+void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst) {
+  // Row blocks outermost, so the source -- W in the repack, usually the one
+  // coming from DRAM -- is read as 8 sequential streams the prefetcher
+  // follows. The previous column-block-outer order read it at a stride of a
+  // whole row, a new 4 KB page per access at K>=1024, and was latency-bound
+  // at 3.2 GB/s cold; this order measures 8.4 (and ~2x hot, from the
+  // register transpose replacing 64 scalar moves per 8x8 block).
+  const size_t C = (size_t)src_cols, ld = (size_t)ld_dst;
   const int C8 = src_cols - (src_cols % 8);
-  const int R8 = src_rows - (src_rows % 8);
-  for (int c0 = 0; c0 < C8; c0 += 8) {
-    for (int r0 = 0; r0 < R8; r0 += 8) {
-      for (int c = c0; c < c0 + 8; c++) {
-        float* d = dst + (size_t)c * ld_dst + r0;
-        const float* s = src + (size_t)r0 * src_cols + c;
-        for (int j = 0; j < 8; j++) d[j] = s[(size_t)j * src_cols];
-      }
-    }
-    for (int c = c0; c < c0 + 8; c++) {
+  int r = r0;
+  for (; r + 8 <= r1; r += 8) {
+    const float* s = src + (size_t)r * C;
+    for (int c = 0; c < C8; c += 8) transpose8x8(s + c, C, dst + (size_t)c * ld + r, ld);
+    for (int c = C8; c < src_cols; c++)
+      for (int j = 0; j < 8; j++) dst[(size_t)c * ld + r + j] = s[(size_t)j * C + c];
+  }
+  for (; r < r1; r++)
+    for (int c = 0; c < src_cols; c++) dst[(size_t)c * ld + r] = src[(size_t)r * C + c];
+}
+
+void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols, int ld_dst) {
+  transpose_rows_f32(src, dst, 0, src_rows, src_cols, ld_dst);
+  if (ld_dst > src_rows) {
+    for (int c = 0; c < src_cols; c++) {
       float* d = dst + (size_t)c * ld_dst;
-      for (int r = R8; r < src_rows; r++) d[r] = src[(size_t)r * src_cols + c];
       for (int r = src_rows; r < ld_dst; r++) d[r] = 0.0f;
     }
-  }
-  for (int c = C8; c < src_cols; c++) {
-    float* d = dst + (size_t)c * ld_dst;
-    for (int r = 0; r < src_rows; r++) d[r] = src[(size_t)r * src_cols + c];
-    for (int r = src_rows; r < ld_dst; r++) d[r] = 0.0f;
   }
 }
 
@@ -570,7 +599,7 @@ void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K, int N
 }
 
 void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                          float* pack) {
+                          float* pack, bool accumulate) {
   const bool do_pack = pack != nullptr && K >= kPackMinK && N >= kBwdMR;
   int k0 = 0;
   for (; k0 + kKTile <= K; k0 += kKTile) {
@@ -578,13 +607,13 @@ void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int
       for (int b = 0; b < B; b++) {
         std::memcpy(pack + (size_t)b * kKTile, X + (size_t)b * K + k0, kKTile * sizeof(float));
       }
-      dw_t_k_block2(pack, kKTile, dYt, dW, B, K, N, k0);
+      dw_t_k_block2(pack, kKTile, dYt, dW, B, K, N, k0, accumulate);
     } else {
-      dw_t_k_block2(X + k0, K, dYt, dW, B, K, N, k0);
+      dw_t_k_block2(X + k0, K, dYt, dW, B, K, N, k0, accumulate);
     }
   }
-  for (; k0 + kVW <= K; k0 += kVW) dw_t_k_block1(X, dYt, dW, B, K, N, k0);
-  if (k0 < K) dw_t_k_block_masked(X, dYt, dW, B, K, N, k0, lane_mask(K - k0));
+  for (; k0 + kVW <= K; k0 += kVW) dw_t_k_block1(X, dYt, dW, B, K, N, k0, accumulate);
+  if (k0 < K) dw_t_k_block_masked(X, dYt, dW, B, K, N, k0, lane_mask(K - k0), accumulate);
 }
 
 // Untransposed dW: kept as the correctness oracle for gemm_dW_accum_t_f32
@@ -610,11 +639,11 @@ void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B, int K,
   }
 }
 
-void bias_grad_accum_f32(const float* dY, float* db, int B, int N) {
+void bias_grad_accum_f32(const float* dY, float* db, int B, int N, bool accumulate) {
   int n = 0;
   const int N8 = N - (N % kVW);
   for (; n < N8; n += kVW) {
-    __m256 acc = _mm256_loadu_ps(db + n);
+    __m256 acc = accumulate ? _mm256_loadu_ps(db + n) : _mm256_setzero_ps();
     for (int b = 0; b < B; b++) {
       __m256 dyv = _mm256_loadu_ps(dY + (size_t)b * N + n);
       acc = _mm256_add_ps(acc, dyv);
@@ -622,7 +651,7 @@ void bias_grad_accum_f32(const float* dY, float* db, int B, int N) {
     _mm256_storeu_ps(db + n, acc);
   }
   for (; n < N; n++) {
-    float s = db[n];
+    float s = accumulate ? db[n] : 0.0f;
     for (int b = 0; b < B; b++) s += dY[(size_t)b * N + n];
     db[n] = s;
   }

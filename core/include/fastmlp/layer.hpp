@@ -1,6 +1,9 @@
 #pragma once
 #include "fastmlp/activation.hpp"
+#include "fastmlp/simd/gemm_kernel.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -46,6 +49,12 @@ class Linear {
   // Returns nullptr if the config asked for no input gradient.
   const float* backward(const float* dY, int batch);
 
+  // O(1): marks the gradients as zero without touching them. The next
+  // backward() overwrites instead of accumulating, so the zeroing pass and
+  // the read of the old dW both disappear (on a model whose gradients live
+  // in DRAM those were ~5% and ~10% of a step). Reading the gradients before
+  // that backward still sees zeros -- weight_grad()/bias_grad() materialize
+  // them on demand.
   void zero_grad();
   void freeze() { frozen_ = true; }
   void unfreeze() { frozen_ = false; }
@@ -61,8 +70,41 @@ class Linear {
   float* bias() { return b_.data(); }
   const float* weights() const { return W_.data(); }
   const float* bias() const { return b_.data(); }
-  const float* weight_grad() const { return dW_.data(); }
-  const float* bias_grad() const { return db_.data(); }
+  const float* weight_grad() const {
+    materialize_zero_grad();
+    return dW_.data();
+  }
+  const float* bias_grad() const {
+    materialize_zero_grad();
+    return db_.data();
+  }
+
+  // The optimizer's way to change W: calls update(w, g, offset, count) on
+  // consecutive row blocks of W and its gradient (both already advanced by
+  // `offset` elements, which the optimizer applies to its own state arrays),
+  // and transposes each block into the forward's packed copy right after,
+  // while it is still in L1. A separate repack on the next forward() would
+  // read W back from memory a second time -- from DRAM, once the model's
+  // state outgrows the L3.
+  template <class F>
+  void update_weights(F&& update) {
+    materialize_zero_grad();
+    const int K = cfg_.in_features, N = cfg_.out_features;
+    // Blocks of 16 rows, so each transposed block writes one whole 64-byte
+    // line per Wp row (8 rows = half lines, touched twice) -- measured best
+    // of 8/16/32/64/whole-matrix -- and of >= ~2k elements, so a narrow
+    // layer is not cut into many tiny optimizer calls.
+    const int rows = std::max(16, ((2048 / std::max(K, 1)) + 15) / 16 * 16);
+    for (int r0 = 0; r0 < N; r0 += rows) {
+      const int r1 = std::min(N, r0 + rows);
+      const size_t off = (size_t)r0 * K;
+      update(W_.data() + off, dW_.data() + off, off, (size_t)(r1 - r0) * K);
+      simd::transpose_rows_f32(W_.data(), Wp_.data(), r0, r1, K, ldWp_);
+    }
+    // Wp_'s padding columns [N, ldWp_) are zero from construction and never
+    // written, so the packed copy is now complete.
+    w_dirty_ = false;
+  }
 
   int in_features() const { return cfg_.in_features; }
   int out_features() const { return cfg_.out_features; }
@@ -93,7 +135,11 @@ class Linear {
   // Only allocated when !inference_only:
   std::vector<float> x_cache_;  // input cache, needed for dW in backward()
   std::vector<float> dyt_buf_;  // dz_buf_ transposed, for gemm_dW_accum_t_f32
-  std::vector<float> dW_, db_;
+  // mutable: weight_grad()/bias_grad() are logically const but may have to
+  // write the zeros a pending zero_grad() deferred.
+  mutable std::vector<float> dW_, db_;
+  mutable bool grad_zero_pending_ = false;
+  void materialize_zero_grad() const;
   std::vector<float> dz_buf_;  // scratch for activation_backward output
   std::vector<float> dx_buf_;  // the buffer backward() returns
   // L1 scratch the dX/dW kernels copy their 16-wide K-slice into, sized for

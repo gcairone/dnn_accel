@@ -98,10 +98,13 @@ const float* Linear::backward(const float* dY, int batch) {
     // is O(batch*out) against the accumulation's O(batch*in*out), so it pays
     // for itself as soon as in_features is more than a handful.
     simd::pack_transpose_f32(dz_buf_.data(), dyt_buf_.data(), batch, cfg_.out_features, batch);
+    // After zero_grad() the gradients are stale-but-logically-zero: write
+    // them instead of accumulating (see zero_grad()).
+    const bool accumulate = !grad_zero_pending_;
     simd::gemm_dW_accum_t_f32(x_cache_.data(), dyt_buf_.data(), dW_.data(), batch,
-                               cfg_.in_features, cfg_.out_features, pack_buf_.data());
-    simd::bias_grad_accum_f32(dz_buf_.data(), db_.data(), batch,
-                               cfg_.out_features);
+                               cfg_.in_features, cfg_.out_features, pack_buf_.data(), accumulate);
+    simd::bias_grad_accum_f32(dz_buf_.data(), db_.data(), batch, cfg_.out_features, accumulate);
+    grad_zero_pending_ = false;
   }
 
   return cfg_.needs_input_grad ? dx_buf_.data() : nullptr;
@@ -109,8 +112,14 @@ const float* Linear::backward(const float* dY, int batch) {
 
 void Linear::zero_grad() {
   if (cfg_.inference_only) return;
+  grad_zero_pending_ = true;
+}
+
+void Linear::materialize_zero_grad() const {
+  if (!grad_zero_pending_) return;
   std::fill(dW_.begin(), dW_.end(), 0.0f);
   std::fill(db_.begin(), db_.end(), 0.0f);
+  grad_zero_pending_ = false;
 }
 
 }  // namespace fastmlp

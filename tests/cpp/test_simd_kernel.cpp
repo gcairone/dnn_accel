@@ -96,6 +96,16 @@ void check_bias_grad(int B, int N) {
   scalar::bias_grad_accum_f32(dY.data(), db_scalar.data(), B, N);
   avx2::bias_grad_accum_f32(dY.data(), db_avx2.data(), B, N);
   for (int i = 0; i < N; i++) assert_close(db_scalar[i], db_avx2[i]);
+
+  // accumulate=false must ignore whatever db held (Linear relies on it after
+  // a deferred zero_grad): start from garbage, expect the from-zero result.
+  std::vector<float> db_over_s((size_t)N, 1e6f), db_over_a((size_t)N, -1e6f);
+  scalar::bias_grad_accum_f32(dY.data(), db_over_s.data(), B, N, false);
+  avx2::bias_grad_accum_f32(dY.data(), db_over_a.data(), B, N, false);
+  for (int i = 0; i < N; i++) {
+    assert_close(db_over_s[i], db_scalar[i]);
+    assert_close(db_over_a[i], db_scalar[i]);
+  }
 }
 
 void check_pack_transpose(int rows, int cols) {
@@ -115,6 +125,26 @@ void check_pack_transpose(int rows, int cols) {
       assert_close(dst_scalar[(size_t)c * ld + r], expect);
       assert_close(dst_avx2[(size_t)c * ld + r], expect);
     }
+  }
+
+  // Unpadded (ld == rows): the dY -> dYt use.
+  std::vector<float> tight((size_t)cols * rows, -3.0f);
+  avx2::pack_transpose_f32(src.data(), tight.data(), rows, cols, rows);
+  for (int c = 0; c < cols; c++)
+    for (int r = 0; r < rows; r++)
+      ASSERT_EQ(tight[(size_t)c * rows + r], src[(size_t)r * cols + c]);
+
+  // transpose_rows_f32 on a sub-range that starts and ends off the 8-row
+  // tile (Linear::update_weights repacks block by block): exactly columns
+  // [r0, r1) are written, everything else -- padding included -- untouched.
+  const int r0 = rows / 3, r1 = rows - rows / 4;
+  for (auto* be : {&scalar::transpose_rows_f32, &avx2::transpose_rows_f32}) {
+    std::vector<float> part((size_t)cols * ld, -4.0f);
+    (*be)(src.data(), part.data(), r0, r1, cols, ld);
+    for (int c = 0; c < cols; c++)
+      for (int r = 0; r < ld; r++)
+        ASSERT_EQ(part[(size_t)c * ld + r],
+                  (r >= r0 && r < r1) ? src[(size_t)r * cols + c] : -4.0f);
   }
 }
 
@@ -167,6 +197,17 @@ void check_gemm_dW_t(int B, int K, int N) {
   for (size_t i = 0; i < dW_ref.size(); i++) {
     assert_close(dW_scalar[i], dW_ref[i]);
     assert_close(dW_avx2[i], dW_ref[i]);
+  }
+
+  // accumulate=false: garbage in dW must not leak into the result.
+  std::vector<float> dW_zero_ref((size_t)N * K, 0.0f);
+  scalar::gemm_dW_accum_f32(X.data(), dY.data(), dW_zero_ref.data(), B, K, N);
+  std::vector<float> dW_over_s((size_t)N * K, 1e6f), dW_over_a((size_t)N * K, -1e6f);
+  scalar::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_over_s.data(), B, K, N, pack.data(), false);
+  avx2::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_over_a.data(), B, K, N, pack.data(), false);
+  for (size_t i = 0; i < dW_zero_ref.size(); i++) {
+    assert_close(dW_over_s[i], dW_zero_ref[i]);
+    assert_close(dW_over_a[i], dW_zero_ref[i]);
   }
 }
 
@@ -248,6 +289,9 @@ TEST(packed_k_slice_shapes) {
       {256, 512, 256}, {64, 512, 128}, {256, 255, 64}, {256, 257, 64},
       {8, 512, 64},    {5, 512, 64},   {256, 520, 7},  {256, 512, 5},
       {1, 512, 64},    {256, 1024, 32},
+      // the suite's large layers, where the 8-row-block transpose and the
+      // overwriting dW run on DRAM-resident operands
+      {64, 1024, 1024}, {64, 784, 1024}, {64, 2048, 512}, {64, 512, 2048},
   };
   for (auto& s : shapes) check_all(s.B, s.K, s.N);
 }

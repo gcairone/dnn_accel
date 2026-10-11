@@ -51,11 +51,18 @@ void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B,
   }
 }
 
-void bias_grad_accum_f32(const float* dY, float* db, int B, int N) {
+void bias_grad_accum_f32(const float* dY, float* db, int B, int N, bool accumulate) {
+  if (!accumulate)
+    for (int n = 0; n < N; n++) db[n] = 0.0f;
   for (int b = 0; b < B; b++) {
     const float* dy_row = dY + (size_t)b * N;
     for (int n = 0; n < N; n++) db[n] += dy_row[n];
   }
+}
+
+void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst) {
+  for (int c = 0; c < src_cols; c++)
+    for (int r = r0; r < r1; r++) dst[(size_t)c * ld_dst + r] = src[(size_t)r * src_cols + c];
 }
 
 void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols, int ld_dst) {
@@ -67,9 +74,11 @@ void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols
 }
 
 void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
-                          float* /*pack*/) {
+                          float* /*pack*/, bool accumulate) {
   for (int n = 0; n < N; n++) {
     float* dw_row = dW + (size_t)n * K;
+    if (!accumulate)
+      for (int k = 0; k < K; k++) dw_row[k] = 0.0f;
     const float* dyt_row = dYt + (size_t)n * B;
     for (int b = 0; b < B; b++) {
       float dy = dyt_row[b];

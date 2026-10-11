@@ -9,7 +9,7 @@
 // X-cache and optimizer state compete for the same cache. This file times the
 // phases as they actually run, back to back, on realistic model shapes, and
 // reports each phase's share of the step plus its achieved GFLOP/s against the
-// hw.md peak (134.4 GFLOP/s at the observed 4292 MHz).
+// measured FMA peak (129 GFLOP/s, hw.md / hardware_analysis/src/roofline.cpp).
 //
 // Build:  cmake -DFASTMLP_BUILD_BENCHMARKS=ON ...  &&  ./bench_breakdown
 #include "fastmlp/activation.hpp"
@@ -20,7 +20,9 @@
 
 #include "bench_common.hpp"
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -29,7 +31,7 @@ using namespace fastmlp;
 
 namespace {
 
-constexpr double kPeakGflops = 134.4;  // hw.md: 32 flops/cycle @ 4292 MHz
+constexpr double kPeakGflops = 129.0;  // hw.md: measured, 31 flops/cycle @ ~4140 MHz sustained
 
 struct Phase {
   std::string name;
@@ -118,12 +120,9 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
                         std::to_string(out) + ")",
                        t, flops, 0});
   }
-  for (int l = 0; l < L; l++) {
-    int in = sizes[l], out = sizes[l + 1];
-    double t = time_phase(
-        [&] { simd::pack_transpose_f32(W[l].data(), Wp[l].data(), out, in, ldWp[l]); }, inner, reps);
-    phases.push_back({"fwd repack W L" + std::to_string(l), t, 0, 2.0 * in * out * 4});
-  }
+  // No separate repack phase: Linear::update_weights() repacks W into Wp
+  // inside the optimizer step, block by block while it is still in L1, so
+  // its cost is part of "opt Adam step (+repack)" below.
   for (int l = 0; l < L; l++) {
     int out = sizes[l + 1];
     double t = time_phase([&] { activation_forward(act, Z[l].data(), A[l].data(), B * out); }, inner,
@@ -174,7 +173,9 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
     int in = sizes[l], out = sizes[l + 1];
     double flops = 2.0 * B * in * out;
     double t = time_phase(
-        [&] { simd::gemm_dW_accum_t_f32(Xc[l].data(), dZt[l].data(), dW[l].data(), B, in, out, pack.data()); },
+        // accumulate=false: the one backward per step follows zero_grad(), so
+        // the real step overwrites dW rather than reading it back.
+        [&] { simd::gemm_dW_accum_t_f32(Xc[l].data(), dZt[l].data(), dW[l].data(), B, in, out, pack.data(), false); },
         inner, reps);
     phases.push_back({"bwd dW L" + std::to_string(l) + " (" + std::to_string(in) + "->" +
                         std::to_string(out) + ")",
@@ -182,7 +183,7 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
   }
   for (int l = L - 1; l >= 0; l--) {
     int out = sizes[l + 1];
-    double t = time_phase([&] { simd::bias_grad_accum_f32(dZ[l].data(), db[l].data(), B, out); },
+    double t = time_phase([&] { simd::bias_grad_accum_f32(dZ[l].data(), db[l].data(), B, out, false); },
                            inner, reps);
     phases.push_back({"bwd dbias L" + std::to_string(l), t, 0, (double)B * out * 4});
   }
@@ -200,8 +201,9 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
     for (int l = 0; l < L; l++) nparams += (size_t)sizes[l] * sizes[l + 1];
 
     double t_step = time_phase([&] { opt.step(); }, inner, reps);
-    // Adam touches W, dW, m, v: read dW/m/v/W + write m/v/W = 7 streams.
-    phases.push_back({"opt Adam step", t_step, 0, 7.0 * nparams * 4});
+    // Adam touches W, dW, m, v: read dW/m/v/W + write m/v/W = 7 streams, plus
+    // the packed copy it writes as it goes (Linear::update_weights).
+    phases.push_back({"opt Adam step (+repack)", t_step, 0, 8.0 * nparams * 4});
 
     double t_zero = time_phase([&] { opt.zero_grad(); }, inner, reps);
     phases.push_back({"opt zero_grad", t_zero, 0, (double)nparams * 4});
@@ -212,8 +214,26 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
   bench::pin_to_core0();
+  // Ad-hoc shape:  bench_breakdown <batch> <activation> <in> <h1> ... <out>
+  // (e.g. a benchmarks/suite architecture); no args = the fixed set below.
+  if (argc >= 5) {
+    int B = std::atoi(argv[1]);
+    std::vector<int> sizes;
+    std::string title = "[";
+    for (int i = 3; i < argc; i++) {
+      sizes.push_back(std::atoi(argv[i]));
+      title += std::string(i > 3 ? "," : "") + argv[i];
+    }
+    title += "] B=" + std::to_string(B) + " " + argv[2];
+    // inner count sized for ~20 ms per sample on the slowest phase
+    double flops = 0;
+    for (size_t l = 0; l + 1 < sizes.size(); l++) flops += 2.0 * B * sizes[l] * sizes[l + 1];
+    int inner = std::max(1, (int)(2.5e9 / std::max(flops, 1.0)));
+    breakdown_mlp(title, sizes, B, activation_from_name(argv[2]).value(), inner, 5);
+    return 0;
+  }
   std::printf("fastmlp training-step breakdown (peak reference %.1f GFLOP/s, hw.md)\n",
                kPeakGflops);
 #if defined(FASTMLP_BACKEND_AVX2)

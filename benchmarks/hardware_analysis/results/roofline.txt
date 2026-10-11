@@ -1,0 +1,20 @@
+# src/roofline.cpp, fastmlp-dev container (4 cores / 4 GB cap), pinned to core 0, 2026-10-11
+== clock / FMA peak (core 0) ==
+scalar clock (int add chain)      4154 MHz
+FMA  8 chains   102.9 GFLOP/s  (24.9 flop/cycle), clock after 4133 MHz
+FMA 10 chains   128.4 GFLOP/s  (31.0 flop/cycle), clock after 4140 MHz
+FMA 12 chains   129.2 GFLOP/s  (31.2 flop/cycle), clock after 4136 MHz  [3 s sustained]
+
+== bandwidth, GB/s (bytes moved / time; rmw counts 3 x 4 B per element) ==
+      size     read    write      rmw
+      16 K    251.4    125.4    224.3
+      24 K    249.9    113.9    224.7
+     128 K    130.2     74.2    189.7
+     256 K    130.0     74.3    189.5
+     384 K    118.5     70.3    177.4
+    1024 K     94.2     65.5    152.5
+    2048 K     93.3     65.0    129.4
+    3072 K     47.5     27.5    103.4
+    8192 K     20.3      9.6     20.5
+   32768 K     17.4      9.5     19.9
+  262144 K     18.1      9.6     19.6
