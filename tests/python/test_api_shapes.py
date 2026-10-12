@@ -1,4 +1,5 @@
-"""usages.md scenarios 1-5, exercised through the actual Python API (not the
+"""The tree scenarios (single leaf, two-branch, three-level with both call
+forms, frozen sub-modules, inference-only), through the Python API (not the
 C++ core directly -- tests/cpp already covers that). Each test is a
 structural/API check, not a numeric-correctness check (see
 test_train_correctness.py for gradient parity).

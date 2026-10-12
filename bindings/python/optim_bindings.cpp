@@ -1,6 +1,4 @@
-// SGD/Adam bindings. Kept in their own translation unit (vs. bindings.cpp)
-// since they're a genuinely separate concept from the MLP wrapper itself,
-// not because the file would otherwise be too large.
+// SGD/Adam bindings.
 #include "mlp_wrapper.hpp"
 
 #include "fastmlp/optimizer.hpp"
@@ -8,9 +6,9 @@
 namespace fastmlp_py {
 
 // Thin wrappers, not the core Optimizer types directly: fastmlp::SGD/Adam
-// only holds raw Linear* pointers gathered from the tree at construction
-// (idea.md's "walk once, cache" contract) -- if the Python model object
-// were garbage-collected first, those pointers would dangle. Holding
+// only holds raw Linear* pointers gathered from the tree at construction --
+// if the Python model object were garbage-collected first, those pointers
+// would dangle. Holding
 // model_ here keeps the whole tree (and every Linear it owns) alive for as
 // long as the optimizer is.
 class SGD {

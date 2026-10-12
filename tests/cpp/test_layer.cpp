@@ -94,9 +94,8 @@ TEST(gradient_check_small_sigmoid) {
 }
 
 TEST(gradient_check_non_multiple_of_8_width) {
-  // usages.md ex1: 20 -> 64, not a multiple of the AVX2 vector width (8) --
-  // exercises tail handling that will matter again once the AVX2 kernel
-  // exists (M8), on the scalar backend for now.
+  // 20 -> 64: K not a multiple of the AVX2 vector width (8), so the K-tail
+  // paths run.
   check_gradients(/*in=*/20, /*out=*/64, /*batch=*/3, ActivationKind::Sigmoid);
 }
 

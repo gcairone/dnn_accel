@@ -1,10 +1,6 @@
 #pragma once
 // Tiny shared timing utility, not a benchmark framework: core-pinning,
-// warmup, median-of-N wall-clock timing -- the same manual methodology as
-// benchmarks/hardware_analysis/src/bench_gemm.c, factored out only because
-// three files now need it (avoiding 3x copy-paste, not introducing a
-// dependency -- the user explicitly chose this manual style over Google
-// Benchmark).
+// warmup, median-of-N wall-clock timing (no Google Benchmark dependency).
 #include <sched.h>
 #include <time.h>
 

@@ -83,14 +83,12 @@ int main() {
   Module model(cfg);
   Adam opt(model, LR);
 
-  // The whole training set is permuted into a scratch buffer ONCE per
+  // The whole training set is permuted into a scratch buffer once per
   // epoch, mirroring train_fastmlp.py's `Xs, Ys = X_train[perm],
-  // Y_train[perm]` exactly, then each batch is a contiguous slice of it
-  // (no per-batch gather). Gathering scattered rows into a fresh xb right
-  // before every timed step (as an earlier version of this file did)
-  // thrashes the cache immediately before forward()/backward() run,
-  // inflating the measured per-iteration cost with a shuffle artifact
-  // Python's once-per-epoch permutation doesn't pay per batch.
+  // Y_train[perm]`, then each batch is a contiguous slice of it. Gathering
+  // scattered rows right before every timed step would thrash the cache
+  // just before forward()/backward() and inflate the measured cost with a
+  // shuffle artifact the Python version does not pay per batch.
   std::vector<float> X_shuf((size_t)N_TRAIN * IN), Y_shuf((size_t)N_TRAIN * OUT),
       grad((size_t)BATCH * OUT);
   std::vector<int> perm(N_TRAIN);

@@ -1,10 +1,9 @@
 """Deep single-branch regression via the fastmlp Python API -- 6 layers
-([20,128,128,128,64,32,1]), vs. the 2-3 layer stacks in the other examples,
+([20,48,48,48,24,12,1]), vs. the 2-3 layer stacks in the other examples,
 to cover a different point in the architecture/shape space. tanh (not
 sigmoid) throughout: the target is in [-1,1] to match tanh's range, and
 tanh's zero-centered output tends to carry gradient better through a
-6-layer stack than sigmoid does (same "one activation for the whole stack"
-constraint as every other example here -- see the project notes).
+6-layer stack than sigmoid does.
 
 Run:
     python3 examples/deep_mlp/generate_data.py   # once

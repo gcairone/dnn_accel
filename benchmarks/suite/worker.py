@@ -8,13 +8,13 @@ never leaks from one case into the next.
 
 What each implementation is allowed to do is the point of the comparison, so
 it is spelled out here once:
-  fastmlp        the public Python API exactly as usages.md shows it.
+  fastmlp        the public Python API, used as documented.
   torch          idiomatic eager PyTorch: inference_mode() for inference,
                  zero_grad/forward/loss/backward/step for training.
   torch_compile  the same model through torch.compile(dynamic=False) --
                  inference compiles the model, training compiles the whole
                  step (forward, loss, backward, optimizer), which measured
-                 fastest of the variants tried (benchmarks/suite/results.md).
+                 fastest of the variants tried.
 All of them single-threaded and pinned to one core.
 """
 

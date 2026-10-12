@@ -1,8 +1,6 @@
-# Fixed, known target: AMD Ryzen 7 4800H (Zen 2). No AVX-512 hardware at all
-# (see benchmarks/hardware_analysis/hw.md) -- AVX2+FMA3+F16C is the only SIMD
-# path available, decided once here from measured hardware, never chosen at
-# runtime (idea.md: "not runtime-feature-detected -- the target CPU is fixed
-# and known in advance").
+# Fixed, known target: AMD Ryzen 7 4800H (Zen 2), which has no AVX-512, so
+# AVX2+FMA3+F16C is the only SIMD path. Chosen here at build time, never
+# detected at runtime: the target CPU is fixed.
 #
 # -fno-math-errno is a measured necessity, not boilerplate: by default GCC
 # must assume std::sqrt sets errno, so it cannot contract it to a bare

@@ -1,6 +1,6 @@
 #pragma once
-// The single translation layer between fastmlp_core and Python (the project notes'
-// "one rule"): every NumPy-contract check (dtype/contiguity via the ndarray
+// The single translation layer between fastmlp_core and Python: every
+// NumPy-contract check (dtype/contiguity via the ndarray
 // template parameters, feature-dim/batch-size via explicit checks below)
 // lives here, and nothing here leaks back into core/.
 #include <nanobind/nanobind.h>
@@ -69,9 +69,8 @@ inline void resolve_activations(const ActivationArg& activation,
 
 // Input arrays accept both writable and read-only NumPy arrays (Scalar is
 // const); output arrays are handed back read-only, since they alias a
-// buffer this module reuses/overwrites on the next forward() call (idea.md's
-// preallocate-and-reuse contract) -- mutating them from Python would be a
-// footgun, not a feature.
+// buffer this module overwrites on the next forward() call -- mutating them
+// from Python would be a footgun, not a feature.
 using InArray = nb::ndarray<const float, nb::c_contig, nb::device::cpu>;
 using OutArray = nb::ndarray<nb::numpy, const float>;
 
@@ -79,9 +78,8 @@ using OutArray = nb::ndarray<nb::numpy, const float>;
 // doesn't track itself: Python-side child lifetime (core Modules are
 // non-owning, see module.hpp), a resolved depth-first leaf name list for
 // the dict-call form, and the path a node was last saved to (needed so a
-// parent's save(inline_inputs=False) can find its already-saved children,
-// per usages.md ex6 -- the child never receives that path from anywhere
-// else).
+// parent's save(inline_inputs=False) can find its already-saved children --
+// the child never receives that path from anywhere else).
 //
 // Deliberately NOT std::enable_shared_from_this: nanobind only engages a
 // registered instance's internal weak_ptr the first time it converts that
@@ -117,8 +115,7 @@ class MLP {
   // MLP::load()'s helper: wraps an already-constructed subtree owned by a
   // shared LoadResult. No per-child Python wrappers exist for a loaded
   // tree (nothing reconstructs them), so .inputs() is empty and leaf names
-  // are always auto-generated -- a documented, deliberate limitation, not
-  // an oversight.
+  // are always auto-generated.
   static std::shared_ptr<MLP> wrap_loaded(fastmlp::Module* root,
                                            std::shared_ptr<fastmlp::mlpf::LoadResult> owner) {
     auto self = std::shared_ptr<MLP>(new MLP());
@@ -134,11 +131,9 @@ class MLP {
 
     auto bind_one = [&](size_t idx, nb::handle obj, const std::string& label) {
       InArray arr;
-      // convert=false: reject a dtype/layout mismatch outright rather than
-      // silently materializing a converted copy (idea.md's NumPy contract
-      // -- never silently cast). Default try_cast allows conversion, which
-      // would (a) violate that contract and (b) hand back a pointer into a
-      // temporary array with no registered cleanup.
+      // convert=false: reject a dtype/layout mismatch outright. The default
+      // try_cast would silently build a converted copy and hand back a
+      // pointer into a temporary array with no registered cleanup.
       if (!nb::try_cast<InArray>(obj, arr, false)) {
         throw std::invalid_argument("fastmlp: input '" + label +
                                      "' must be a float32, C-contiguous NumPy array");

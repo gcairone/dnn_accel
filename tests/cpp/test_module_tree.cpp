@@ -1,5 +1,6 @@
-// Structural + numerical coverage of usages.md scenarios 1-5, at the raw
-// C++/Module level (no NumPy/Python involved -- that's tests/python, M11).
+// Structural + numerical coverage of the tree scenarios (single leaf,
+// two-branch, three-level, frozen sub-modules, inference-only), at the raw
+// C++/Module level; tests/python covers the same through the Python API.
 #include "fastmlp/module.hpp"
 
 #include <cstring>
@@ -17,8 +18,7 @@ using fastmlp::StateError;
 
 namespace {
 // Fill a small buffer with a fixed, non-trivial pattern -- explicit int
-// arithmetic (never size_t-minus-int, which silently underflows unsigned
-// and was the root cause of a real bug caught by M3's gradient check).
+// arithmetic (size_t-minus-int silently underflows).
 void fill_pattern(std::vector<float>& v, int period, int offset) {
   for (size_t i = 0; i < v.size(); i++) {
     v[i] = 0.1f * (float)((int)(i % (size_t)period) - offset);
@@ -26,7 +26,7 @@ void fill_pattern(std::vector<float>& v, int period, int offset) {
 }
 }  // namespace
 
-// --- usages.md scenario 1: single leaf, no inputs= ---------------------
+// --- single leaf, no inputs= -------------------------------------------
 TEST(scenario1_single_leaf) {
   ModuleConfig cfg;
   cfg.layer_sizes = {20, 64, 32, 1};
@@ -86,7 +86,7 @@ TEST(leaf_skips_unused_input_grad_but_still_accumulates_weight_grads) {
   }
 }
 
-// --- usages.md scenario 2: two-branch tree (ex2's shapes) ---------------
+// --- two-branch tree ----------------------------------------------------
 TEST(scenario2_two_branch_tree_shapes) {
   ModuleConfig enc_img_cfg;
   enc_img_cfg.layer_sizes = {512, 128, 64};
@@ -129,7 +129,7 @@ TEST(scenario2_two_branch_tree_shapes) {
   ASSERT_TRUE(enc_meta.own_input_grad() != nullptr);
 }
 
-// --- usages.md scenario 3: three-level tree, whole-tree FD check --------
+// --- three-level tree, whole-tree FD check ------------------------------
 TEST(scenario3_three_level_tree_gradient_check) {
   ModuleConfig enc_a_cfg;
   enc_a_cfg.layer_sizes = {16, 32, 16};
@@ -215,7 +215,7 @@ TEST(scenario3_three_level_tree_gradient_check) {
   check_leaf(c, dC, a, b, /*leaf_is_a=*/false, /*leaf_is_b=*/false);
 }
 
-// --- usages.md scenario 4: freeze pretrained sub-modules ----------------
+// --- freeze pretrained sub-modules --------------------------------------
 TEST(scenario4_freeze_individual_children_head_still_trains) {
   ModuleConfig enc_x_cfg;
   enc_x_cfg.layer_sizes = {64, 128, 64};
@@ -236,7 +236,7 @@ TEST(scenario4_freeze_individual_children_head_still_trains) {
   model_cfg.seed = 32;
   Module model(model_cfg, {&enc_x, &enc_y});
 
-  enc_x.freeze();  // per usages.md ex4: freeze children individually, not via freeze_tree
+  enc_x.freeze();  // freeze one child individually, not via freeze_tree
   ASSERT_TRUE(enc_x.layers().front().is_frozen());
   ASSERT_TRUE(!enc_y.layers().front().is_frozen());  // untouched sibling: the control
 
@@ -270,7 +270,7 @@ TEST(scenario4_freeze_individual_children_head_still_trains) {
   ASSERT_TRUE(model_head_has_nonzero);
 }
 
-// --- usages.md scenario 5: inference-only tree --------------------------
+// --- inference-only tree -------------------------------------------------
 TEST(scenario5_inference_only_tree) {
   ModuleConfig leaf1_cfg;
   leaf1_cfg.layer_sizes = {64, 128, 64};
@@ -401,7 +401,7 @@ TEST(mismatched_child_output_sum_throws_at_construction) {
   ASSERT_THROWS(Module(bad_model_cfg, {&leaf}));
 }
 
-// --- hardening (M7): freeze_tree/unfreeze_tree/zero_grad_tree -----------
+// --- freeze_tree/unfreeze_tree/zero_grad_tree ---------------------------
 TEST(freeze_tree_and_zero_grad_tree_affect_whole_subtree) {
   ModuleConfig leaf_a_cfg;
   leaf_a_cfg.layer_sizes = {4, 3};

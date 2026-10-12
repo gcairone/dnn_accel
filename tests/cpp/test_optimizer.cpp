@@ -1,6 +1,6 @@
 // SGD/Adam checked against hand-derived closed-form updates, using the
-// optimizer's OWN reported gradients (weight_grad()/bias_grad(), already
-// validated independently by M3's finite-difference tests) as the ground
+// optimizer's OWN reported gradients (weight_grad()/bias_grad(), validated
+// independently by test_layer's finite-difference checks) as the ground
 // truth fed into the formula -- this isolates "does the update rule match
 // the math" from "is the gradient correct" (already covered elsewhere).
 #include "fastmlp/optimizer.hpp"
@@ -214,12 +214,13 @@ TEST(sgd_weight_decay_matches_formula) {
 }
 
 // step() repacks each layer's forward copy of W block by block, inside the
-// update (Linear::update_weights) -- nothing else marks it stale any more. If
+// update (Linear::update_weights), without marking it stale. If
 // a block were skipped or misplaced, the batched forward (packed W) would
 // silently disagree with the weights the optimizer reports. Checked against
 // an unpacked reference forward and against the batch-1 path (which reads W
 // directly), on layers that need several row blocks: 130 rows at K=40
-// (56-row blocks) and 37 rows at K=300 (8-row blocks), none a multiple of 8.
+// (64-row blocks) and 37 rows at K=300 (16-row blocks), neither a multiple of
+// the block.
 TEST(step_keeps_packed_forward_weights_in_sync) {
   for (auto sizes : {std::vector<int>{40, 130, 5}, std::vector<int>{300, 37, 3}}) {
     ModuleConfig cfg;

@@ -2,14 +2,12 @@
 generate_data.py writes -- directly comparable to train_cpp.cpp (same data,
 same architecture/hyperparameters) and train_torch.py.
 
-Uses activation="sigmoid" on the whole stack, not "relu" as usages.md ex1
-shows literally: with relu on the final layer too, the output is unbounded
-above, and bce_grad's clip(pred, eps, 1-eps) then produces a huge gradient
-whenever a large positive prediction meets a target of 0 (denominator
-p*(1-p) -> 0). Verified empirically -- relu-everywhere collapses to chance
-level (~53% test acc) after epoch 0; sigmoid-everywhere reaches 100%. This
-is a real constraint of the current API (one activation for the whole
-stack, no per-layer override), not a core-library bug -- see the project notes.
+Uses activation="sigmoid" on the whole stack. With relu on the final layer
+too, the output is unbounded above and bce_grad's clip(pred, eps, 1-eps)
+produces a huge gradient whenever a large positive prediction meets a
+target of 0: relu-everywhere collapses to chance (~53% test acc) after
+epoch 0. activation="relu", output_activation="sigmoid" also works (99.8%);
+sigmoid-everywhere is kept so recorded timings stay comparable across runs.
 
 Run:
     python3 examples/two_moons/generate_data.py   # once

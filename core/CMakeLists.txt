@@ -1,7 +1,6 @@
-# fastmlp_core: the C++ core. NEVER links BLIS or any BLAS library --
-# that's the structural enforcement of idea.md's "no shipped BLAS
-# dependency" mandate. BLIS only ever appears in tests/cpp and
-# benchmarks/cpp, gated behind FASTMLP_BLIS_FOUND.
+# fastmlp_core never links BLIS or any other BLAS: the library ships with no
+# BLAS dependency. BLIS only appears in tests/cpp and benchmarks/cpp, as an
+# oracle, gated behind FASTMLP_BLIS_FOUND.
 add_library(fastmlp_core STATIC
   src/simd/gemm_kernel_scalar.cpp
   src/simd/gemm_kernel_avx2.cpp

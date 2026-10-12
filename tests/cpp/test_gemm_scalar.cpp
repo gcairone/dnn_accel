@@ -1,7 +1,5 @@
-// M1: the naive scalar GEMM is the numerical ground truth every later
-// milestone (Linear, Module, and eventually the AVX2 kernel in M8) is
-// checked against. These hand-computed values are the literal ground truth
-// referenced later.
+// The naive scalar GEMM is the numerical ground truth Linear, Module and the
+// AVX2 kernels are checked against; these hand-computed values pin it down.
 #include "fastmlp/simd/gemm_kernel.hpp"
 #include "test_harness.hpp"
 

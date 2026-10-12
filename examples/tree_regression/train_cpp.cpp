@@ -6,8 +6,7 @@
 // train_torch.py.
 //
 // mse_grad is computed inline -- loss gradients are not part of
-// fastmlp_core (idea.md draws the core's boundary at forward/backward/
-// optimizer only); matches python/fastmlp/losses.py::mse_grad exactly.
+// fastmlp_core; matches python/fastmlp/losses.py::mse_grad exactly.
 //
 // Run from the repo root (paths below are relative to it):
 //   python3 examples/tree_regression/generate_data.py   # once
@@ -108,9 +107,8 @@ int main() {
   Module model(root_cfg, {&enc_a, &enc_b});
   Adam opt(model, LR);
 
-  // Whole training set permuted into a scratch buffer once per epoch (see
-  // examples/mnist/train_cpp.cpp's header comment for why this matters for
-  // measurement, not just style: cache state right before the timed region).
+  // Permuted once per epoch into a scratch buffer, each batch a contiguous
+  // slice (see examples/mnist/train_cpp.cpp for why).
   std::vector<float> A_shuf((size_t)N_TRAIN * NA), B_shuf((size_t)N_TRAIN * NB),
       y_shuf(N_TRAIN), grad(BATCH);
   std::vector<int> perm(N_TRAIN);

@@ -1,6 +1,6 @@
-// M8: the hand-written AVX2+FMA microkernel checked against TWO independent
-// oracles -- the project's own scalar reference (always) and BLIS's
-// cblas_sgemm (when available), across hw.md's real shapes, tail/edge
+// The hand-written AVX2+FMA kernels checked against TWO independent oracles
+// -- the project's own scalar reference (always) and BLIS's cblas_sgemm
+// (when available), across the benchmarked layer shapes, tail/edge
 // shapes (K/N/B not multiples of the tile), and seeded random fuzz.
 #include "fastmlp/simd/gemm_kernel.hpp"
 
@@ -148,9 +148,8 @@ void check_pack_transpose(int rows, int cols) {
   }
 }
 
-// The packed forward must agree with the unpacked gemm_xwt_f32 -- that is
-// the real contract, since Linear::forward switched to the packed path and
-// gemm_xwt_f32 stayed behind as the reference.
+// The packed forward (what Linear::forward uses) must agree with the
+// unpacked reference gemm_xwt_f32.
 void check_gemm_xwtp(int B, int K, int N, bool with_bias) {
   const int ldWp = packed_ldw(N);
   std::vector<float> X((size_t)B * K), W((size_t)N * K), bias((size_t)N);
@@ -253,9 +252,8 @@ struct Shape {
 }  // namespace
 
 TEST(hw_md_shape_table) {
-  // The exact (B,K,N) triples benchmarked in hw.md, so avx2 correctness is
-  // validated on precisely the shapes this project's own hardware analysis
-  // cares about, not synthetic square matrices.
+  // The (B,K,N) triples the hardware analysis benchmarked, not synthetic
+  // square matrices.
   Shape shapes[] = {
       {128, 20, 64}, {128, 64, 32}, {128, 32, 1}, {64, 512, 128},
       {64, 128, 64}, {256, 16, 32}, {256, 32, 16}, {1, 64, 128},
@@ -265,8 +263,8 @@ TEST(hw_md_shape_table) {
 
 TEST(tail_and_edge_shapes) {
   // Deliberately includes values that are NOT multiples of the AVX2 width
-  // (8) or the microkernel tile (MR=4, NR=2), since usages.md's own shapes
-  // (e.g. in_features=20) are not multiples of 8 either.
+  // (8) or the microkernel tile (6 rows x 2 vectors) -- real layers such as
+  // in_features=20 are not either.
   int Ks[] = {1, 2, 3, 7, 9, 15, 17};
   int Ns[] = {1, 2, 3, 5, 8, 9};
   int Bs[] = {1, 2, 3, 4, 5, 7, 9};

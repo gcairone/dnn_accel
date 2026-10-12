@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Non-extensive hardware probe (idea.md, "Hardware Analysis", step 1):
-# lscpu, /proc/cpuinfo, ISA flags of interest, and per-core cache topology.
-# No load testing here (e.g. sustained-AVX-512 downclock) — that needs real
-# kernels/benchmarks and comes later, once reference libraries are in.
+# Hardware probe: lscpu, /proc/cpuinfo, ISA flags of interest, and per-core
+# cache topology. No load testing (src/roofline.cpp measures clock, FMA peak
+# and bandwidth).
 #
-# Meant to run inside the fastmlp-dev container so results reflect the same
-# environment where kernels will eventually be built and benchmarked.
+# Run inside the fastmlp-dev container, the environment the kernels are
+# built and benchmarked in.
 set -euo pipefail
 
 OUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/results"

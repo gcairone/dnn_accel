@@ -8,16 +8,15 @@
 //   dW(N,K) += X(B,K)^T @ dY(B,N)                 -- weight gradient (accumulates)
 //   db(N)   += sum_b dY(b,:)                      -- bias gradient (accumulates)
 //
-// All buffers row-major, no allocation inside any of these functions --
-// every buffer is caller-owned and preallocated (idea.md: zero allocation
-// in the hot path).
+// All buffers row-major, caller-owned and preallocated; nothing here
+// allocates.
 //
 // PACKED FORWARD (the fast path Linear::forward actually uses)
 // ------------------------------------------------------------
 // The forward pass is the one place the (N,K) weight layout fights the
 // hardware: Y = X @ W^T needs W's N dimension contiguous, but W stores K
-// contiguously. A dot-product kernel can work directly on (N,K), and the
-// original one did, but it pays twice -- one horizontal reduction per
+// contiguously. A dot-product kernel can work directly on (N,K), but it
+// pays twice -- one horizontal reduction per
 // output (which dominates at small K: measured 2.97 GFLOP/s on a 20->64
 // layer, slower than the scalar reference), and each vector accumulator
 // only ever yields a single scalar output, wasting 7 of 8 lanes' worth of
@@ -133,9 +132,8 @@ inline int packed_ldw(int N) {
   return ld;
 }
 
-// Hand-written AVX2+FMA3 microkernel (M8). Same 4 signatures as scalar::,
-// so both can be linked and compared directly regardless of which one is
-// "active" by default.
+// Hand-written AVX2+FMA3 kernels. Same signatures as scalar::, so both can be
+// linked and compared directly whichever one is active.
 namespace avx2 {
 
 void gemm_xwt_f32(const float* X, const float* W, const float* bias,
@@ -172,12 +170,10 @@ void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int
 
 }  // namespace avx2
 
-// Dev/testing selector ONLY -- the shipped/production build always selects
-// avx2 (FASTMLP_BACKEND_AVX2 defined by CMake once M8 lands and
-// FASTMLP_SIMD_BACKEND=AVX2 is configured). scalar exists purely as the
-// numerical ground truth for tests and is never chosen at runtime; this is
-// a compile-time CMake option, not a portability fallback -- idea.md rules
-// that out explicitly, since the target CPU is fixed and known in advance.
+// Compile-time selector (FASTMLP_SIMD_BACKEND=AVX2 defines
+// FASTMLP_BACKEND_AVX2); the shipped build always uses avx2. scalar is the
+// numerical ground truth for tests, not a runtime fallback: the target CPU
+// is fixed.
 #if defined(FASTMLP_BACKEND_AVX2)
 using namespace avx2;
 #else

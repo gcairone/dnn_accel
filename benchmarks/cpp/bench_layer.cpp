@@ -1,5 +1,5 @@
 // Full Linear::forward/backward (bias + activation overhead included, not
-// just the raw GEMM) on hw.md's shape table, using whichever backend this
+// just the raw GEMM) on the bench_gemm shape table, using whichever backend this
 // binary was configured with (FASTMLP_SIMD_BACKEND at cmake-configure time
 // -- see the printed backend name in the output).
 #include "bench_common.hpp"
@@ -22,14 +22,14 @@ int main() {
   pin_to_core0();
 
   Shape shapes[] = {
-      {128, 20, 64, "ex1 L1 (20->64)"},
-      {128, 64, 32, "ex1 L2 (64->32)"},
-      {128, 32, 1, "ex1 L3 (32->1)"},
-      {64, 512, 128, "ex2 enc_img L1 (512->128)"},
-      {64, 128, 64, "ex2 enc_img L2 (128->64)"},
-      {256, 16, 32, "ex3 enc_a L1 (16->32)"},
-      {256, 32, 16, "ex3 enc_a L2 (32->16)"},
-      {1, 64, 128, "ex5 inference B=1 (64->128)"},
+      {128, 20, 64, "small L1 (20->64)"},
+      {128, 64, 32, "small L2 (64->32)"},
+      {128, 32, 1, "small L3 (32->1)"},
+      {64, 512, 128, "enc_img L1 (512->128)"},
+      {64, 128, 64, "enc_img L2 (128->64)"},
+      {256, 16, 32, "enc_a L1 (16->32)"},
+      {256, 32, 16, "enc_a L2 (32->16)"},
+      {1, 64, 128, "inference B=1 (64->128)"},
   };
 
   printf("=== fastmlp Linear::forward/backward -- active backend: %s ===\n",

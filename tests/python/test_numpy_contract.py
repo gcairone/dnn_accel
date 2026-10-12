@@ -1,5 +1,5 @@
-"""NumPy-contract enforcement at the binding layer (the project notes: never
-silently cast or copy). Every check here is about the boundary itself, not
+"""NumPy-contract enforcement at the binding layer: wrong dtype/layout
+raises, never silently cast or copied. Every check here is about the boundary itself, not
 training correctness -- see test_train_correctness.py for that.
 """
 
@@ -78,7 +78,7 @@ def test_backward_rejects_wrong_feature_count():
 
 
 def test_output_is_read_only():
-    # Preallocated-buffer aliasing (idea.md) means the returned array must
+    # Preallocated-buffer aliasing means the returned array must
     # never be mutated in place -- it's a live view, not a fresh copy.
     model = make_leaf()
     out = model(np.random.rand(4, 4).astype(np.float32))

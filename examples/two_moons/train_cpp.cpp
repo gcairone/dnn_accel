@@ -4,12 +4,11 @@
 // train_torch.py. Same architecture/hyperparameters/activation choice; see
 // train_fastmlp.py's header comment for why activation=Sigmoid (not ReLU).
 //
-// The loss gradient (BCE) is NOT part of fastmlp_core -- idea.md draws the
-// core's boundary at forward/backward/optimizer only, same place the
-// Python API draws it (python/fastmlp/losses.py lives outside the native
-// extension). Computed inline here, mirroring what a real C++ caller of
-// fastmlp_core has to write themselves; matches losses.py::bce_grad
-// exactly (same eps clipping, same 1/batch averaging).
+// The loss gradient (BCE) is not part of fastmlp_core, whose boundary is
+// forward/backward/optimizer (python/fastmlp/losses.py lives outside the
+// native extension too). Computed inline here, as a C++ caller would;
+// matches losses.py::bce_grad exactly (same eps clipping, same 1/batch
+// averaging).
 //
 // Run from the repo root (paths below are relative to it):
 //   python3 examples/two_moons/generate_data.py   # once
@@ -97,15 +96,9 @@ int main() {
   Module model(cfg);
   SGD opt(model, LR);
 
-  // The whole training set is permuted into a scratch buffer ONCE per
-  // epoch, mirroring train_fastmlp.py's `Xs, ys = X_train[perm],
-  // y_train[perm]` exactly, then each batch is a contiguous slice of it
-  // (no per-batch gather). This matters for measurement, not just style:
-  // gathering scattered rows into a fresh xb right before every timed
-  // step (as an earlier version of this file did) thrashes the cache
-  // immediately before forward()/backward() run, inflating the measured
-  // per-iteration cost with a shuffle artifact that Python's
-  // once-per-epoch permutation doesn't pay per batch.
+  // Permuted once per epoch into a scratch buffer, mirroring
+  // train_fastmlp.py's `Xs, ys = X_train[perm], y_train[perm]`; each batch
+  // is then a contiguous slice (see examples/mnist/train_cpp.cpp for why).
   std::vector<float> X_shuf((size_t)N_TRAIN * 2), y_shuf(N_TRAIN), grad(BATCH);
   std::vector<int> perm(N_TRAIN);
   std::iota(perm.begin(), perm.end(), 0);

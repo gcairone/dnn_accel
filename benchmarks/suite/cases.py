@@ -107,7 +107,7 @@ ARCHS = [
                  mlp([16, 32, 16], "relu"),
              ]),
              mlp([24, 32, 16], "relu"),
-         ]), "mse", "three-level tree (usages.md example 3)"),
+         ]), "mse", "three-level tree"),
     Arch("mnist_mlp", mlp([784, 256, 128, 10], "relu", out="identity"), "ce",
          "classic MNIST MLP"),
     Arch("mnist_wide", mlp([784, 1024, 1024, 10], "relu", out="identity"), "ce",

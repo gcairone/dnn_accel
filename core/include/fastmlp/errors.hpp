@@ -4,9 +4,8 @@
 namespace fastmlp {
 
 // batch > max_batch, mismatched leaf-input count, malformed .mlpf shapes, etc.
-// The C++ core has no Python safety net of its own callers -- tests/cpp and
-// benchmarks/cpp call directly, so these checks live here, not only at the
-// Python binding layer.
+// Checked in the core itself, not only in the Python bindings, since C++
+// callers have no other safety net.
 struct ShapeError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };

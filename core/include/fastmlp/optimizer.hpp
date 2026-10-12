@@ -5,11 +5,9 @@
 
 namespace fastmlp {
 
-// Base constructor walks root.for_each_in_tree(...) ONCE, caching a flat
-// list of every Linear* in the whole tree. step()/zero_grad() iterate that
-// cached list (skipping frozen layers), never re-walking the tree or
-// allocating -- idea.md's zero-allocation-in-the-hot-path contract applies
-// to the training loop as a whole, not just the forward/backward kernels.
+// The constructor walks the tree once and caches a flat list of every
+// Linear*; step()/zero_grad() iterate that list (skipping frozen layers) and
+// never allocate.
 class Optimizer {
  public:
   virtual ~Optimizer() = default;
@@ -29,7 +27,7 @@ class SGD : public Optimizer {
 
  private:
   float lr_, momentum_, weight_decay_;
-  std::vector<std::vector<float>> vel_W_, vel_b_;  // one per param, preallocated at construction
+  std::vector<std::vector<float>> vel_W_, vel_b_;
 };
 
 class Adam : public Optimizer {

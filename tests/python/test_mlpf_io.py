@@ -1,4 +1,4 @@
-""".mlpf save/load through the actual Python API (usages.md ex6). Core-level
+""".mlpf save/load through the actual Python API. Core-level
 format edge cases (malformed headers, truncated blobs) are already covered
 by tests/cpp/test_mlpf_roundtrip.cpp -- this file only checks what's
 specific to the binding layer: MLP.save/.load/.load_weights and the

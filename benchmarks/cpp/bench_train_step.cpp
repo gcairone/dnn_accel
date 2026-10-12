@@ -1,7 +1,6 @@
 // End-to-end training-step throughput (forward + backward + SGD step +
-// zero_grad) on usages.md ex1's shape -- the closest thing, still entirely
-// inside core/ (no Python), to the eventual M12 acceptance benchmark
-// against PyTorch.
+// zero_grad) on a small [20,64,32,1] MLP, entirely inside core/ (no Python):
+// the C++ counterpart of benchmarks/python/bench_train_vs_torch.py.
 #include "bench_common.hpp"
 #include "fastmlp/module.hpp"
 #include "fastmlp/optimizer.hpp"
@@ -44,6 +43,6 @@ int main() {
          "SCALAR"
 #endif
   );
-  printf("usages.md ex1 [20,64,32,1], B=%d: %.3f us/step, %.1f steps/sec\n", B, t * 1e6, 1.0 / t);
+  printf("[20,64,32,1], B=%d: %.3f us/step, %.1f steps/sec\n", B, t * 1e6, 1.0 / t);
   return 0;
 }

@@ -30,32 +30,26 @@ struct ModuleConfig {
   std::optional<uint64_t> seed = std::nullopt;
 };
 
-// One concrete type mirrors the tree directly (idea.md's Module Design): a
-// Module is either a leaf (inputs empty) or has children whose outputs get
+// A Module is either a leaf (inputs empty) or has children whose outputs are
 // concatenated feature-wise before feeding this module's own Linear stack.
 //
-// Children are NON-OWNING (raw pointers): usages.md's freeze/load_weights
-// example uses a child module independently after passing it into a
-// parent's inputs=, which requires it to stay independently alive -- an
-// owning tree would make that impossible. The core's contract is simply
-// "don't outlive your children"; the Python binding layer is what actually
-// keeps children alive via refcounted references.
+// Children are NON-OWNING (raw pointers): a child stays usable on its own
+// after being passed to a parent (freeze it, load its weights, save it), so
+// the tree cannot own it. The contract is "don't outlive your children"; the
+// Python bindings keep children alive with refcounted references.
 class Module {
  public:
   explicit Module(const ModuleConfig& cfg, std::vector<Module*> inputs = {});
 
   // leaf_inputs: one raw pointer per LEAF module in this subtree, flattened
-  // in depth-first (left-to-right) order over leaves -- matches usages.md's
-  // "flattened, depth-first order over leaves" note. The core has no
-  // concept of leaf names/dicts; that's resolved entirely at the Python
-  // binding layer before calling in with this fixed positional order.
+  // in depth-first (left-to-right) order over leaves. Leaf names / dict
+  // calls are resolved by the Python bindings before calling in.
   // Throws ShapeError if leaf_inputs.size() != num_leaves() or batch > max_batch.
   const float* forward(const std::vector<const float*>& leaf_inputs, int batch);
 
   // dOut: (batch, out_features()) gradient w.r.t. this module's output.
   // Recurses into children, accumulating weight grads through the whole
-  // subtree. Returns nothing (matches usages.md: model.backward() returns
-  // nothing). Throws StateError if inference_only.
+  // subtree. Throws StateError if inference_only.
   void backward(const float* dOut, int batch);
 
   // Leaf: gradient w.r.t. the raw external input passed to forward(),
@@ -73,10 +67,8 @@ class Module {
   void zero_grad_tree();
 
   // Depth-first pre-order (this module first, then children left-to-right).
-  // Only a mutable overload: nothing in this codebase needs a const-only
-  // traversal, and providing both triggers a real (GCC-flagged) overload
-  // ambiguity since std::function's converting constructor makes the two
-  // candidates equally viable for a const-callback argument.
+  // Mutable only: a const overload taking std::function is ambiguous with
+  // this one for a lambda argument.
   void for_each_in_tree(const std::function<void(Module&)>& fn);
 
   const std::vector<Module*>& inputs() const { return inputs_; }
@@ -87,7 +79,6 @@ class Module {
   int out_features() const { return cfg_.layer_sizes.back(); }
   int max_batch() const { return cfg_.max_batch; }
   bool inference_only() const { return cfg_.inference_only; }
-  // Per layer: layers()[i].activation().
 
   std::vector<Linear>& layers() { return layers_; }
   const std::vector<Linear>& layers() const { return layers_; }

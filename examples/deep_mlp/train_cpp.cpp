@@ -1,5 +1,5 @@
 // Deep single-branch regression via the raw fastmlp_core C++ API -- 6
-// layers ([20,128,128,128,64,32,1]), a different point in the shape space
+// layers ([20,48,48,48,24,12,1]), a different point in the shape space
 // than the other examples' 2-3 layer stacks. Reads the same fixed dataset
 // generate_data.py writes; directly comparable to train_fastmlp.py (same
 // data, architecture, hyperparameters) and train_torch.py.

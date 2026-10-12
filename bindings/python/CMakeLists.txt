@@ -1,7 +1,5 @@
-# The only place nanobind and fastmlp_core meet (the project notes' "one rule").
-# Discovery follows the standard nanobind CMake pattern -- same "explicit
-# paths, don't assume a *.pc/*Config.cmake exists" caution already used for
-# BLIS at the top level, except nanobind DOES ship its own cmake_dir helper.
+# The only place nanobind and fastmlp_core meet. nanobind is located through
+# its own `python -m nanobind --cmake_dir` helper.
 find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
 
 execute_process(

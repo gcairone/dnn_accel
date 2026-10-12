@@ -28,10 +28,9 @@ set_property(CACHE FASTMLP_SIMD_BACKEND PROPERTY STRINGS SCALAR AVX2)
 
 include(cmake/DetectISA.cmake)
 
-# BLIS: correctness-oracle / performance-comparison only (idea.md -- never a
-# shipped runtime dependency of fastmlp_core). Discovered via explicit paths
-# already confirmed working in the dev container: Debian's blis-serial
-# package doesn't ship a blis.pc pkg-config file, so we don't assume one.
+# BLIS: correctness oracle and performance baseline only, never a runtime
+# dependency of fastmlp_core. Explicit paths because Debian's blis-serial
+# package ships no blis.pc.
 set(FASTMLP_BLIS_INCLUDE_DIR "/usr/include/x86_64-linux-gnu/blis-serial" CACHE PATH "BLIS header directory")
 set(FASTMLP_BLIS_LIB_DIR "/usr/lib/x86_64-linux-gnu/blis-serial" CACHE PATH "BLIS library directory")
 find_path(FASTMLP_BLIS_HEADER blis.h PATHS ${FASTMLP_BLIS_INCLUDE_DIR} NO_DEFAULT_PATH)

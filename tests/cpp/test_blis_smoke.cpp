@@ -1,5 +1,4 @@
-// M0 smoke test: de-risks the toolchain BEFORE any fastmlp code exists.
-// Three independent checks:
+// Toolchain smoke test, independent of any fastmlp code. Three checks:
 //   1. Compile-time ISA guard -- if the aggressive -march=znver2/-mavx2/-mfma
 //      flags aren't actually reaching this translation unit, the BUILD
 //      fails here, which is a stronger guarantee than any runtime check.
@@ -8,10 +7,10 @@
 //      Y(B,N) = X(B,K) @ W(N,K)^T + bias(N), W stored row-major (out,in).
 //   3. A conservative GFLOP/s floor canary -- catches "linked the wrong
 //      BLAS build" (e.g. an unoptimized reference BLAS) before it poisons
-//      later benchmark numbers. Real benchmarking is M9, not here.
+//      later benchmark numbers.
 //
-// BLIS is used here purely as a correctness oracle / performance reference
-// (idea.md: never a shipped runtime dependency of fastmlp_core itself).
+// BLIS is only a correctness oracle / performance reference, never a
+// runtime dependency of fastmlp_core.
 
 #include "test_harness.hpp"
 #include <cblas.h>
@@ -72,8 +71,8 @@ TEST(blis_perf_floor_canary) {
 
   double sec = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) * 1e-9;
   double gflops = 2.0 * B * K * N * reps / sec / 1e9;
-  // Conservative floor: hw.md measured BLIS at ~94-116 GFLOP/s on shapes
-  // this size; 20 GFLOP/s only needs to catch "wrong/unoptimized BLAS
+  // Conservative floor: BLIS measures ~94-116 GFLOP/s on shapes this size
+  // on the target CPU; 20 GFLOP/s only needs to catch "wrong/unoptimized BLAS
   // build linked", not validate real performance.
   ASSERT_TRUE(gflops > 20.0);
 }

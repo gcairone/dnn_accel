@@ -16,7 +16,7 @@ Linear::Linear(const LinearConfig& cfg) : cfg_(cfg) {
   const size_t mb = (size_t)cfg_.max_batch;
 
   W_.resize(out * in);
-  b_.resize(out, 0.0f);  // bias initialized to zero, a common default
+  b_.resize(out, 0.0f);
   z_buf_.resize(mb * out);
   a_buf_.resize(mb * out);
 
@@ -35,10 +35,7 @@ Linear::Linear(const LinearConfig& cfg) : cfg_(cfg) {
     pack_buf_.resize(simd::pack_scratch_floats((int)std::max(out, mb)));
   }
 
-  // Kaiming-uniform scaled by fan-in: bound = sqrt(6 / fan_in), a reasonable
-  // default for ReLU-heavy stacks. Neither idea.md nor usages.md specifies
-  // an init scheme, so this is Linear's own choice, made reproducible via
-  // an optional seed.
+  // Kaiming-uniform: bound = sqrt(6 / fan_in).
   std::mt19937_64 rng(cfg_.seed.has_value() ? *cfg_.seed : std::random_device{}());
   float bound = std::sqrt(6.0f / (float)cfg_.in_features);
   std::uniform_real_distribution<float> dist(-bound, bound);

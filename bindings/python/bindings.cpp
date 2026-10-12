@@ -1,6 +1,5 @@
-// The nanobind module entry point. MLP itself is defined in mlp_wrapper.hpp
-// (shared with optim_bindings.cpp, since SGD/Adam bind against the same
-// wrapper type); this file just registers it plus module-level exceptions.
+// nanobind module entry point: registers MLP (mlp_wrapper.hpp, shared with
+// optim_bindings.cpp) and the module-level exceptions.
 #include "mlp_wrapper.hpp"
 
 using namespace fastmlp_py;

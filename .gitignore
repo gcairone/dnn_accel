@@ -1,15 +1,14 @@
-# Out-of-source CMake build directories (see the project notes for why there are
-# four: build/ = SCALAR backend for regression testing, build-avx2/ = the
-# AVX2 backend that actually produces the shipped extension, build-examples/
-# and build-bench/ = same AVX2 backend, just with different
-# FASTMLP_BUILD_* options so rebuilding them never touches the shipped .so).
+# Out-of-source CMake build directories: build/ = SCALAR backend (regression
+# testing), build-avx2/ = AVX2 backend (produces the shipped extension),
+# build-examples/ and build-bench/ = AVX2 with other FASTMLP_BUILD_* options,
+# so rebuilding them never touches the shipped .so.
 /build/
 /build-avx2/
 /build-examples/
 /build-bench/
 
-# Built Python extension -- produced by bindings/python's CMake target
-# straight into the package directory, not source.
+# Built Python extension, produced by bindings/python's CMake target straight
+# into the package directory.
 python/fastmlp/_fastmlp*.so
 
 # Python bytecode / test caches
@@ -17,16 +16,18 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Datasets generated on demand by examples/*/{generate_data,prepare_data}.py
+# Generated datasets and initial weights
 examples/two_moons/data/
 examples/mnist/data/
 examples/tree_regression/data/
 examples/deep_mlp/data/
-
-# Claude Code local settings (machine-specific permissions, not project config)
-.claude/settings.local.json
-idea.md
-usages.md
-# benchmarks/suite: generated datasets/initial weights, and --quick smoke runs
 benchmarks/suite/data/
 benchmarks/suite/results/quick/
+
+# Markdown: only README.md is tracked. Design notes, per-run result write-ups
+# and the generated suite report stay local.
+*.md
+!README.md
+
+# Claude Code local settings
+.claude/settings.local.json

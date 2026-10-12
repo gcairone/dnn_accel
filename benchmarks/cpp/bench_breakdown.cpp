@@ -9,7 +9,7 @@
 // X-cache and optimizer state compete for the same cache. This file times the
 // phases as they actually run, back to back, on realistic model shapes, and
 // reports each phase's share of the step plus its achieved GFLOP/s against the
-// measured FMA peak (129 GFLOP/s, hw.md / hardware_analysis/src/roofline.cpp).
+// measured FMA peak (129 GFLOP/s, benchmarks/hardware_analysis/src/roofline.cpp).
 //
 // Build:  cmake -DFASTMLP_BUILD_BENCHMARKS=ON ...  &&  ./bench_breakdown
 #include "fastmlp/activation.hpp"
@@ -31,7 +31,7 @@ using namespace fastmlp;
 
 namespace {
 
-constexpr double kPeakGflops = 129.0;  // hw.md: measured, 31 flops/cycle @ ~4140 MHz sustained
+constexpr double kPeakGflops = 129.0;  // measured: 31 flops/cycle @ ~4140 MHz sustained
 
 struct Phase {
   std::string name;
@@ -93,9 +93,7 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
   std::vector<Phase> phases;
 
   // --- forward -----------------------------------------------------------
-  // Measures the packed path Linear::forward actually takes, including the
-  // repack itself -- which a training step really does pay once per
-  // optimizer step, so hiding it would flatter the result.
+  // The packed path Linear::forward takes at batch > 1.
   std::vector<std::vector<float>> Wp(L);
   std::vector<int> ldWp(L);
   int pack_rows = B;
@@ -234,7 +232,7 @@ int main(int argc, char** argv) {
     breakdown_mlp(title, sizes, B, activation_from_name(argv[2]).value(), inner, 5);
     return 0;
   }
-  std::printf("fastmlp training-step breakdown (peak reference %.1f GFLOP/s, hw.md)\n",
+  std::printf("fastmlp training-step breakdown (peak reference %.1f GFLOP/s)\n",
                kPeakGflops);
 #if defined(FASTMLP_BACKEND_AVX2)
   std::printf("backend: AVX2\n");
@@ -242,15 +240,15 @@ int main(int argc, char** argv) {
   std::printf("backend: SCALAR\n");
 #endif
 
-  // examples/mnist: the shape that currently loses ~3.7x to PyTorch.
+  // examples/mnist.
   breakdown_mlp("MNIST [784,256,128,10] B=128", {784, 256, 128, 10}, 128, ActivationKind::Sigmoid,
                  20, 5);
-  // usages.md ex1: the small shape fastmlp already wins on.
-  breakdown_mlp("ex1 [20,64,32,1] B=128", {20, 64, 32, 1}, 128, ActivationKind::ReLU, 200, 5);
+  // A small regression MLP.
+  breakdown_mlp("small [20,64,32,1] B=128", {20, 64, 32, 1}, 128, ActivationKind::ReLU, 200, 5);
   // examples/two_moons.
   breakdown_mlp("two_moons [2,32,16,1] B=64", {2, 32, 16, 1}, 64, ActivationKind::Sigmoid, 500, 5);
-  // The two remaining M12 acceptance shapes (benchmarks/python/results.md).
-  breakdown_mlp("ex2-scale [512,128,64,1] B=64", {512, 128, 64, 1}, 64, ActivationKind::ReLU, 100,
+  // The two larger shapes of benchmarks/python/bench_train_vs_torch.py.
+  breakdown_mlp("medium [512,128,64,1] B=64", {512, 128, 64, 1}, 64, ActivationKind::ReLU, 100,
                  5);
   breakdown_mlp("wide [512,256,128,1] B=256", {512, 256, 128, 1}, 256, ActivationKind::ReLU, 20, 5);
   return 0;

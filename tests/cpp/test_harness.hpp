@@ -1,7 +1,5 @@
 #pragma once
-// Manual, minimal test harness -- no GoogleTest/Catch2 dependency, by
-// deliberate choice (same "no dependency until proven necessary" philosophy
-// already applied to benchmarking, see benchmarks/hardware_analysis/src/bench_gemm.c).
+// Manual, minimal test harness -- no GoogleTest/Catch2 dependency.
 //
 // One executable per test_*.cpp file: TEST(name){...} self-registers into a
 // static list, FASTMLP_TEST_MAIN() generates main() which runs every

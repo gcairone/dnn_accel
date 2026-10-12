@@ -1,48 +1,31 @@
-// Hand-written AVX2+FMA3 microkernels for the target CPU (AMD Ryzen 7
-// 4800H / Zen 2 -- see benchmarks/hardware_analysis/hw.md): no AVX-512
-// hardware exists on this part, so AVX2+FMA is not a choice, it's the only
-// available SIMD path. 16 architectural YMM (256-bit / 8x fp32) registers,
-// not 32 -- every tile below is sized to that budget.
+// Hand-written AVX2+FMA3 kernels for the target CPU (AMD Ryzen 7 4800H /
+// Zen 2). No AVX-512 on this part; 16 YMM registers, and every tile below is
+// sized to that budget.
 //
-// THREE THINGS THE FIRST VERSION GOT WRONG, all found by measurement
-// (benchmarks/cpp/bench_breakdown), not by reading the code:
+// Three design rules, each measured:
 //
-// 1. ACCESS PATTERN. Every kernel ran its innermost loop over the full
-//    reduction dimension while the outer loop walked the batch, so the large
-//    matrix was re-streamed from memory once per outer step. On MNIST's
-//    784->256 layer at B=128 that was ~102 MB of traffic for dX and for dW,
-//    and ~26 MB for the forward, against 51 MFLOP of actual work. Fix: block
-//    the reduction dimension outermost so the slice being reduced over stays
-//    L1-resident, and register-block the other two.
+// 1. Reduction dimension blocked outermost, so the slice being reduced over
+//    stays L1-resident and the large operand is not re-streamed once per
+//    batch step; the other two dimensions are register-blocked.
+// 2. 12 independent accumulators per tile. Zen 2 issues 2 FMAs/cycle at
+//    5-cycle latency, so it needs ~10 chains; 8 ran at roughly half
+//    throughput (dX 57 -> 110 GFLOP/s, dW 29 -> 106).
+// 3. Wp's row stride is an odd number of cache lines (packed_ldw()). A
+//    power-of-two stride maps every row onto 4 of the L1's 64 sets (forward
+//    41 -> 107 GFLOP/s). dX/dW's stride is K, which this code does not
+//    control; they use the K-slice scratch instead (kPackMinK).
 //
-// 2. TOO FEW ACCUMULATORS. The first fix used 4-row tiles = 8 accumulators.
-//    Zen 2 issues 2 FMAs/cycle at 5-cycle latency, so it needs ~10
-//    independent chains to avoid bubbles; 8 left it stalling at roughly half
-//    throughput (dX 57 GFLOP/s, dW 29). Widening to 6-row tiles = 12
-//    accumulators took dX to 110 and dW to 106 GFLOP/s. This was the single
-//    largest win, and it is invisible to a traffic analysis -- it only shows
-//    up as "the kernel is nowhere near its roofline".
-//
-// 3. POWER-OF-TWO ROW STRIDE. The packed forward walks Wp one row per k, so
-//    Wp's row stride is its access stride. At N=256 that stride was 1024 B =
-//    16 cache lines, mapping every row onto just 4 of the L1's 64 sets; an
-//    8-way cache thrashes long before K rows are read. Padding the stride to
-//    an odd number of lines (see packed_ldw()) took the forward from 41 to
-//    107 GFLOP/s. Note the same trap does NOT apply to dX/dW, whose stride is
-//    K and therefore not something this code controls.
-//
-// Tiles (all within the 16-register budget, leaving room for operands):
+// Tiles:
 //   gemm_xwtp_f32       6 batch rows  x 2 vector-columns = 12 accumulators
 //   gemm_dX_f32         6 batch rows  x 2 k-vectors      = 12 accumulators
 //   gemm_dW_accum_*_f32 6 output rows x 2 k-vectors      = 12 accumulators
 //
-// K-remainders use masked loads at the same tile width rather than falling
-// back to a scalar loop: shapes like usages.md ex1's K=20 leave a 4-wide
-// remainder that a scalar path would make the dominant cost of the kernel.
+// K-remainders use masked loads at the same tile width rather than a scalar
+// loop: a K=20 layer leaves a 4-wide remainder that a scalar path would make
+// the dominant cost of the kernel.
 //
-// gemm_xwt_f32 (the original unpacked dot-product forward) is deliberately
-// left as-is: it is the correctness reference the packed path is tested
-// against, and nothing performance-critical calls it any more.
+// gemm_xwt_f32 (unpacked dot-product forward) is the correctness reference
+// the packed path is tested against; nothing performance-critical calls it.
 #include "fastmlp/simd/gemm_kernel.hpp"
 
 #include <immintrin.h>
@@ -510,12 +493,10 @@ inline void transpose8x8(const float* s, size_t ls, float* d, size_t ld) {
 }
 
 void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst) {
-  // Row blocks outermost, so the source -- W in the repack, usually the one
-  // coming from DRAM -- is read as 8 sequential streams the prefetcher
-  // follows. The previous column-block-outer order read it at a stride of a
-  // whole row, a new 4 KB page per access at K>=1024, and was latency-bound
-  // at 3.2 GB/s cold; this order measures 8.4 (and ~2x hot, from the
-  // register transpose replacing 64 scalar moves per 8x8 block).
+  // Row blocks outermost, so the source -- W in the repack, often coming
+  // from DRAM -- is read as 8 sequential streams the prefetcher follows.
+  // Column blocks outermost would read it at a whole-row stride, a new 4 KB
+  // page per access at K>=1024: 3.2 GB/s cold, against 8.4 for this order.
   const size_t C = (size_t)src_cols, ld = (size_t)ld_dst;
   const int C8 = src_cols - (src_cols % 8);
   int r = r0;

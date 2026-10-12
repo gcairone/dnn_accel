@@ -2,14 +2,12 @@
 prepare_data.py writes -- directly comparable to train_cpp.cpp (same data,
 architecture, hyperparameters) and train_torch.py.
 
-fastmlp has no softmax/cross-entropy (idea.md's fixed, small op set), so
-this trains as MSE-regression-to-one-hot instead (the same relu+mse_grad
-pattern usages.md ex2 already documents, just applied to a classification
-target), reading the predicted class off as argmax(pred). Uses
-activation="sigmoid" (bounded output, matches [0,1] one-hot targets) rather
-than "relu": verified empirically that relu-everywhere plateaus around 69%
-test accuracy (dead-ReLU pathology on the output layer under MSE), while
-sigmoid-everywhere reaches ~98%.
+Trains as MSE regression to one-hot targets, reading the predicted class off
+as argmax(pred), with activation="sigmoid" (bounded output, matching [0,1]
+targets); relu-everywhere plateaus around 69% test accuracy (dead output
+units under MSE), sigmoid-everywhere reaches ~98%. cross_entropy_grad on
+logits is the more usual choice now that it exists; this setup is kept so
+recorded timings stay comparable across runs.
 
 Run:
     python3 examples/mnist/prepare_data.py   # once

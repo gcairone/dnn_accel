@@ -1,8 +1,6 @@
-"""M12 acceptance benchmark (idea.md): fastmlp vs PyTorch CPU, both pinned
-to a single thread/core, on the exact shapes already used in
-benchmarks/cpp/results.md (M9) -- same manual-harness methodology
-(warmup, median-of-N wall-clock) as the rest of the project's benchmarks,
-ported to Python since torch has no equivalent to the C++ harness.
+"""Acceptance benchmark: fastmlp vs PyTorch CPU training step, both pinned to
+a single thread/core, on the benchmarks/cpp shapes -- same manual-harness
+methodology (warmup, median-of-N wall-clock) as the C++ benchmarks.
 
 Run inside the fastmlp-dev container:
     python3 benchmarks/python/bench_train_vs_torch.py
@@ -81,9 +79,9 @@ def bench_torch(layers, batch, lr=1e-2, seed=1):
 
 
 SHAPES = [
-    ("ex1 [20,64,32,1] B=128 (small)", [20, 64, 32, 1], 128),
-    ("ex2-scale [512,128,64,1] B=64 (moderate)", [512, 128, 64, 1], 64),
-    ("wide [512,256,128,1] B=256 (moderate, larger batch)", [512, 256, 128, 1], 256),
+    ("small [20,64,32,1] B=128", [20, 64, 32, 1], 128),
+    ("medium [512,128,64,1] B=64", [512, 128, 64, 1], 64),
+    ("wide [512,256,128,1] B=256", [512, 256, 128, 1], 256),
 ]
 
 WARMUP_BLOCKS, INNER_ITERS, OUTER_REPS = 3, 200, 7

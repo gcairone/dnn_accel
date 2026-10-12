@@ -1,7 +1,6 @@
 """fastmlp: a minimal, single-thread, SIMD-tuned MLP core. The native
 extension (`_fastmlp`, built from bindings/python/) does all the real work;
-this package just re-exports its public API plus the pure-Python loss
-helpers (see idea.md / usages.md for the full API by example).
+this package re-exports its public API plus the pure-Python loss helpers.
 """
 
 from ._fastmlp import MLP, SGD, Adam, ShapeError, StateError

@@ -29,8 +29,8 @@ struct LinearConfig {
 // y = act(x @ W^T + b). Weight layout: row-major (out_features, in_features),
 // matching nn.Linear -- contiguous per-output-neuron rows.
 //
-// Every buffer is allocated exactly once, in the constructor; forward()/
-// backward() never allocate (idea.md: zero allocation in the hot path).
+// Every buffer is allocated once, in the constructor; forward()/backward()
+// never allocate.
 class Linear {
  public:
   explicit Linear(const LinearConfig& cfg);
@@ -38,7 +38,7 @@ class Linear {
   // x: (batch, in_features) row-major, batch <= max_batch (else ShapeError).
   // Returns a pointer into this layer's own persistent output buffer
   // (batch, out_features) -- valid until the next forward() call on this
-  // layer overwrites it (idea.md's preallocate-and-reuse-via-slicing contract).
+  // layer overwrites it.
   const float* forward(const float* x, int batch);
 
   // dY: (batch, out_features), gradient w.r.t. this layer's POST-activation
@@ -118,12 +118,10 @@ class Linear {
 
   std::vector<float> W_, b_;  // out_features*in_features, out_features
 
-  // W_ transposed into (in_features, ldWp_) for the forward microkernel --
-  // see the "PACKED FORWARD" note in simd/gemm_kernel.hpp for why the
-  // forward pass wants the other orientation. Rebuilt lazily on the first
-  // forward() after any mutable access to W_, so a training step pays the
-  // O(K*N) repack once per optimizer step (against O(B*K*N) of GEMM), and
-  // an inference_only model pays it exactly once, at construction.
+  // W_ transposed into (in_features, ldWp_) for the forward microkernel (see
+  // "PACKED FORWARD" in simd/gemm_kernel.hpp). update_weights() keeps it in
+  // sync; any other mutable access to W_ sets w_dirty_ and the next batched
+  // forward() rebuilds it.
   std::vector<float> Wp_;
   int ldWp_ = 0;
   bool w_dirty_ = true;

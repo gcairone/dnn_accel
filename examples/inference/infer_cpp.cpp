@@ -4,8 +4,8 @@
 // tasks, where the actual predictions have to agree across implementations).
 //
 // inference_only=true (skips allocating gradient/backward-cache buffers) is
-// the normal way this library is used once a model is trained and deployed
-// (usages.md scenario 5), not an inference-specific speed trick -- and this
+// the normal way this library is used once a model is trained and deployed,
+// not an inference-specific speed trick -- and this
 // binary is compiled with the project's standard -O3 arch flags, the same
 // ones every other target here uses, nothing extra. What IS deliberately
 // NOT done: no manual buffer/kernel-level tricks beyond what the library

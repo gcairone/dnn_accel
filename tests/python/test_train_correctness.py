@@ -5,8 +5,8 @@ binding-layer marshalling bugs -- wrong axis, transposed weights, wrong
 activation string mapping -- that only show up when going through Python).
 
 Model.backward() returns nothing and raw weights aren't exposed in the
-Python API (matches usages.md), so weights are read back through the
-documented .mlpf format (a JSON header line + raw float32 blob, idea.md) --
+Python API, so weights are read back through the .mlpf format (a JSON
+header line + raw float32 blob) --
 the header line is plain JSON, parseable with the stdlib, no need to
 reimplement the C++ side's hand-rolled restricted parser.
 """
