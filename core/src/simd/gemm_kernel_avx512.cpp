@@ -128,27 +128,41 @@ constexpr int mr_for() {
   return NR == 1 ? 12 : NR == 2 ? 12 : NR == 3 ? 8 : 6;
 }
 
-// All M rows for one (panel, depth block): full tiles, then the remainder.
-// Only the first tile of a panel pass prefetches its own slice (pf): it is the
-// one that pulls the slice in, the rest find it in L1/L2.
+// All M rows for one (panel, depth block), split into tiles of balanced
+// height: ceil(M / MR) tiles of M/tiles or M/tiles + 1 rows, rather than
+// full MR-row tiles plus a short remainder. A 4-row tail tile keeps only 8
+// accumulators busy (half the FMA chains the core needs); at batch 16 that
+// tail is a quarter of the work. Only the first tile of a panel pass
+// prefetches its own slice (pf): it is the one that pulls the slice in, the
+// rest find it in L1/L2.
+template <int NR, bool MASKED, int R>
+inline void tile_rows(const float* A, long lda, const float* Bm, long ldb, float* C, long ldc, int D, Init init,
+                      const float* bias, __mmask16 m, int pf) {
+  tile<R, NR, MASKED>(A, lda, Bm, ldb, C, ldc, D, init, bias, m, pf);
+}
+
 template <int NR, bool MASKED>
 void run_m(const float* A, long lda, const float* Bm, long ldb, float* C, long ldc, int M, int D, Init init,
            const float* bias, __mmask16 m, int pf) {
   constexpr int MR = mr_for<NR>();
+  const int tiles = (M + MR - 1) / MR;
+  if (tiles == 0) return;
+  const int base = M / tiles, extra = M % tiles;  // `extra` tiles get base + 1 rows
   int i = 0;
-  for (; i + MR <= M; i += MR) {
-    tile<MR, NR, MASKED>(A + i * lda, lda, Bm, ldb, C + i * ldc, ldc, D, init, bias, m, pf);
+  for (int t = 0; t < tiles; t++) {
+    const int rows = base + (t < extra ? 1 : 0);
+    const float* a = A + i * lda;
+    float* c = C + i * ldc;
+    switch (rows) {
+#define FASTMLP_ROWS(R) \
+  case R: if constexpr (R <= MR) tile_rows<NR, MASKED, R>(a, lda, Bm, ldb, c, ldc, D, init, bias, m, pf); break;
+      FASTMLP_ROWS(1) FASTMLP_ROWS(2) FASTMLP_ROWS(3) FASTMLP_ROWS(4) FASTMLP_ROWS(5) FASTMLP_ROWS(6)
+      FASTMLP_ROWS(7) FASTMLP_ROWS(8) FASTMLP_ROWS(9) FASTMLP_ROWS(10) FASTMLP_ROWS(11) FASTMLP_ROWS(12)
+#undef FASTMLP_ROWS
+      default: break;
+    }
     pf = 0;
-  }
-  const float* a = A + i * lda;
-  float* c = C + i * ldc;
-  switch (M - i) {
-#define FASTMLP_TAIL(R) \
-  case R: if constexpr (R < MR) tile<R, NR, MASKED>(a, lda, Bm, ldb, c, ldc, D, init, bias, m, pf); break;
-    FASTMLP_TAIL(1) FASTMLP_TAIL(2) FASTMLP_TAIL(3) FASTMLP_TAIL(4) FASTMLP_TAIL(5) FASTMLP_TAIL(6)
-    FASTMLP_TAIL(7) FASTMLP_TAIL(8) FASTMLP_TAIL(9) FASTMLP_TAIL(10) FASTMLP_TAIL(11)
-#undef FASTMLP_TAIL
-    default: break;
+    i += rows;
   }
 }
 
@@ -372,6 +386,11 @@ inline void gemv_rows(const float* __restrict x, const float* __restrict W, cons
 #pragma GCC unroll 16
     for (int r = 0; r < R; r++)
       acc[r] = _mm512_fmadd_ps(_mm512_maskz_loadu_ps(m, w + (long)r * K + k), xv, acc[r]);
+  }
+  if (R <= 4) {
+    // reduce16 costs 30 shuffles whatever R is; a few rows reduce cheaper alone
+    for (int r = 0; r < R; r++) y[n0 + r] = _mm512_reduce_add_ps(acc[r]) + (bias ? bias[n0 + r] : 0.0f);
+    return;
   }
   __m512 sums = reduce16(acc);
   const __mmask16 om = head_mask(R);
