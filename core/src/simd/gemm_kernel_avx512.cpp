@@ -204,7 +204,10 @@ constexpr int kNRMax = FASTMLP_AVX512_NRMAX;
 // Tried and measured neutral or worse, so not done: prefetching the NEXT
 // panel's slice into L2 across the current pass's tiles (0-4% slower),
 // prefetching A rows ahead within a tile (up to 1.7x slower on dW, whose A
-// rows are short), prefetchw of a tile's C lines at its start (+-2%), capping
+// rows are short), prefetchw of a tile's C lines at its start (+-2%),
+// packing each tile's A rows depth-interleaved so a depth step's broadcasts
+// share one line (3-7% slower on L2-resident shapes, 4-5% faster on two of
+// the largest), capping
 // the depth block so the Bm slice stays L1-resident (5-12% slower at
 // 128-192), and cldemote of finished C lines (up to 1.5x slower).
 }  // namespace
@@ -240,35 +243,53 @@ struct Gemm {
   bool pack_bm;       // copy each Bm panel slice into `pack` first
 };
 
-// Traffic that leaves the L2 for a blocking choice (mc rows of A by dc of
-// depth per block): Bm is re-read once per m-block, C re-read and re-written
-// once per extra depth block -- each only counted if it does not fit in L2
-// anyway. The L3 behind it delivers ~7 B/cycle to one core, so this is what
-// decides large layers.
+// Bytes that cross between L3 and L2 for one blocking choice: mc rows of A by
+// dc of depth per block, loop nest m-block > depth block > panel > tile.
+//   A: read once.
+//   Bm: read once per m-block -- unless it fits in L2, then once in all.
+//   C: with dc < D every extra depth block re-reads and re-writes the
+//      m-block's C rows (mc x P); free while that block stays L2-resident
+//      next to the A block, a full round trip per extra depth block if not.
+// The L3 behind the L2 delivers ~7 B/cycle to one core, so this is what
+// decides large layers. Pre-fix, only "full M, cut depth" vs "full depth,
+// cut M" were compared, and a batch-1024 forward on a 2048x512 layer (both
+// extremes ~40 MB of traffic, against ~23 MB for mc 384 x dc 512) ran at
+// 53% of peak.
+constexpr double kL2Resident = 1.5 * 1024 * 1024;
+
 double blocking_cost(const Gemm& g, int mc, int dc) {
-  constexpr double kL2Resident = 768.0 * 1024;
-  const double b_bytes = 4.0 * g.D * g.P, c_bytes = 4.0 * g.M * g.P;
+  const double a_bytes = 4.0 * g.M * g.D, b_bytes = 4.0 * g.D * g.P, c_bytes = 4.0 * g.M * g.P;
   const int m_blocks = (g.M + mc - 1) / mc, d_blocks = (g.D + dc - 1) / dc;
-  double cost = 0;
-  if (b_bytes > kL2Resident) cost += b_bytes * (m_blocks - 1);
-  if (c_bytes > kL2Resident) cost += c_bytes * 2.0 * (d_blocks - 1);
+  double cost = a_bytes + c_bytes;
+  cost += (b_bytes > kL2Resident ? b_bytes * m_blocks : b_bytes);
+  const bool c_block_resident = 4.0 * mc * g.P + 4.0 * mc * dc <= kL2Resident;
+  if (d_blocks > 1 && !c_block_resident) cost += c_bytes * 2.0 * (d_blocks - 1);
   return cost;
 }
 
 void run(const Gemm& g) {
   // If the whole A (M x D) fits the budget, no blocking (C is then written
-  // exactly once and Bm read once). Otherwise either cut the depth (full-M
-  // slices) or cut M (full-depth blocks), whichever moves less data.
+  // exactly once and Bm read once). Otherwise the (mc, dc) pair, A block
+  // within the budget, that moves the least data.
   int mc = g.M, dc = g.D;
   if (4.0 * g.M * g.D > (double)g_tune.a_budget) {
-    int dc_a = (int)(g_tune.a_budget / (4L * g.M));
-    dc_a = dc_a < 64 ? min_i(g.D, 64) : dc_a;
-    int mc_b = (int)(g_tune.a_budget / (4L * g.D));
-    mc_b = mc_b < 12 ? 12 : mc_b / 12 * 12;
-    if (blocking_cost(g, g.M, dc_a) <= blocking_cost(g, mc_b, g.D)) {
-      dc = dc_a;
-    } else {
-      mc = mc_b;
+    double best = -1;
+    static constexpr int kDepths[] = {1 << 30, 2048, 1536, 1024, 768, 512, 384, 256, 192, 128, 64};
+    for (int cand : kDepths) {
+      const int d = min_i(cand, g.D);
+      int m = (int)(g_tune.a_budget / (4L * d));
+      m = m >= g.M ? g.M : (m / 12) * 12;
+      if (m < 12) continue;
+      const double c = blocking_cost(g, m, d);
+      if (best < 0 || c < best) {
+        best = c;
+        mc = m;
+        dc = d;
+      }
+    }
+    if (best < 0) {  // even 64 rows of depth over 12 rows of A exceed the budget
+      dc = min_i(g.D, 64);
+      mc = 12;
     }
   }
   dc = min_i(dc, g_tune.dc_max);
