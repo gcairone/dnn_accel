@@ -31,7 +31,15 @@ using namespace fastmlp;
 
 namespace {
 
-constexpr double kPeakGflops = 129.0;  // measured: 31 flops/cycle @ ~4140 MHz sustained
+#if defined(FASTMLP_BACKEND_AVX512)
+// Emerald Rapids: 64 flops/cycle at ~3.1-3.3 GHz under the AVX-512 license
+// (benchmarks/hardware_analysis/results/emr/compute.txt). The VM's clock
+// drifts by +-10%, so this column is indicative; bench_kernels has the
+// drift-free per-kernel figures.
+constexpr double kPeakGflops = 205.0;
+#else
+constexpr double kPeakGflops = 129.0;  // Zen 2, measured: 31 flops/cycle @ ~4140 MHz sustained
+#endif
 
 struct Phase {
   std::string name;
@@ -76,7 +84,7 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
   const int L = (int)sizes.size() - 1;
 
   // Per-layer buffers, laid out exactly like Linear's members.
-  std::vector<std::vector<float>> W(L), dW(L), Xc(L), Z(L), A(L), dZ(L), dX(L), bias(L), db(L);
+  std::vector<simd::AlignedVector<float>> W(L), dW(L), Xc(L), Z(L), A(L), dZ(L), dX(L), bias(L), db(L);
   for (int l = 0; l < L; l++) {
     int in = sizes[l], out = sizes[l + 1];
     W[l].assign((size_t)out * in, 0.01f);
@@ -94,11 +102,11 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
 
   // --- forward -----------------------------------------------------------
   // The packed path Linear::forward takes at batch > 1.
-  std::vector<std::vector<float>> Wp(L);
+  std::vector<simd::AlignedVector<float>> Wp(L);
   std::vector<int> ldWp(L);
   int pack_rows = B;
   for (int l = 0; l < L; l++) pack_rows = std::max(pack_rows, sizes[l + 1]);
-  std::vector<float> pack(simd::pack_scratch_floats(pack_rows));
+  simd::AlignedVector<float> pack(simd::pack_scratch_floats(pack_rows));
   for (int l = 0; l < L; l++) {
     int in = sizes[l], out = sizes[l + 1];
     ldWp[l] = simd::packed_ldw(out);
@@ -130,7 +138,7 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
   // Linear::forward's x_cache_ memcpy (backward needs the input for dW).
   for (int l = 0; l < L; l++) {
     int in = sizes[l];
-    std::vector<float> src((size_t)B * in, 0.5f);
+    simd::AlignedVector<float> src((size_t)B * in, 0.5f);
     double t = time_phase(
         [&] { std::memcpy(Xc[l].data(), src.data(), sizeof(float) * (size_t)B * in); }, inner, reps);
     phases.push_back({"fwd x_cache memcpy L" + std::to_string(l), t, 0, 2.0 * B * in * 4});
@@ -159,7 +167,7 @@ void breakdown_mlp(const std::string& title, const std::vector<int>& sizes, int 
   }
   // The dW path Linear::backward actually takes: transpose dZ, then
   // accumulate. Both phases reported, so the transpose is never hidden.
-  std::vector<std::vector<float>> dZt(L);
+  std::vector<simd::AlignedVector<float>> dZt(L);
   for (int l = 0; l < L; l++) dZt[l].assign((size_t)sizes[l + 1] * B, 0.0f);
   for (int l = L - 1; l >= 0; l--) {
     int out = sizes[l + 1];
@@ -234,7 +242,9 @@ int main(int argc, char** argv) {
   }
   std::printf("fastmlp training-step breakdown (peak reference %.1f GFLOP/s)\n",
                kPeakGflops);
-#if defined(FASTMLP_BACKEND_AVX2)
+#if defined(FASTMLP_BACKEND_AVX512)
+  std::printf("backend: AVX512\n");
+#elif defined(FASTMLP_BACKEND_AVX2)
   std::printf("backend: AVX2\n");
 #else
   std::printf("backend: SCALAR\n");

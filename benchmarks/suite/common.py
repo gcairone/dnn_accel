@@ -14,7 +14,10 @@ import numpy as np
 SUITE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(SUITE_DIR, "..", ".."))
 DATA_DIR = os.path.join(SUITE_DIR, "data")          # gitignored: datasets, .mlpf, perms
-RESULTS_DIR = os.path.join(SUITE_DIR, "results")    # checked in: raw JSON per mode
+# checked in: raw JSON per mode. results/ holds the original Zen 2 target's
+# runs; FASTMLP_SUITE_RESULTS points another target's runs elsewhere (the
+# Emerald Rapids ones live in results/emr/).
+RESULTS_DIR = os.environ.get("FASTMLP_SUITE_RESULTS", os.path.join(SUITE_DIR, "results"))
 MODELS_DIR = os.path.join(DATA_DIR, "models")
 CPP_BIN = os.environ.get("FASTMLP_SUITE_CPP", os.path.join(REPO, "build-bench", "benchmarks", "suite", "suite_cpp"))
 CORE = int(os.environ.get("FASTMLP_SUITE_CORE", "0"))

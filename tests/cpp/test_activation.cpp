@@ -106,6 +106,47 @@ void check_against_reference(const char* backend, FwdFn fwd, BwdFn bwd) {
   }
 }
 
+
+// The masked tail runs the same vector code as the body, so an element's
+// value must not depend on where it sits or how long the buffer is.
+void check_tail_position_independent(FwdFn fwd, BwdFn bwd) {
+  const std::vector<float> z = sweep_inputs();
+  for (ActivationKind k : kAllKinds) {
+    std::vector<float> full(z.size()), dfull(z.size()), ones(z.size(), 1.0f);
+    fwd(k, z.data(), full.data(), (int)z.size());
+    bwd(k, z.data(), full.data(), ones.data(), dfull.data(), (int)z.size());
+    for (int len = 1; len <= 40; len++) {
+      for (int off : {0, 3, 11000}) {
+        std::vector<float> a(len + 1, -7.0f), d(len + 1, -7.0f);
+        fwd(k, z.data() + off, a.data(), len);
+        bwd(k, z.data() + off, full.data() + off, ones.data(), d.data(), len);
+        for (int i = 0; i < len; i++) {
+          ASSERT_EQ(a[i], full[off + i]);
+          ASSERT_EQ(d[i], dfull[off + i]);
+        }
+        ASSERT_EQ(a[len], -7.0f);  // nothing written past n
+        ASSERT_EQ(d[len], -7.0f);
+      }
+    }
+  }
+}
+
+void check_dZ_aliasing_dA(FwdFn fwd, BwdFn bwd) {
+  const std::vector<float> z = sweep_inputs();
+  const int n = (int)z.size();
+  for (ActivationKind k : kAllKinds) {
+    std::vector<float> a(n), sep(n), dA(n);
+    for (int i = 0; i < n; i++) dA[i] = 0.1f * (float)((i % 7) - 3);
+    fwd(k, z.data(), a.data(), n);
+    bwd(k, z.data(), a.data(), dA.data(), sep.data(), n);
+    bwd(k, z.data(), a.data(), dA.data(), dA.data(), n);
+    for (int i = 0; i < n; i++) ASSERT_EQ(dA[i], sep[i]);
+  }
+}
+
+const bool kHave512 = __builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512bw") &&
+                      __builtin_cpu_supports("avx512vl") && __builtin_cpu_supports("avx512dq");
+
 }  // namespace
 
 TEST(names_round_trip_for_every_kind) {
@@ -130,43 +171,28 @@ TEST(avx2_matches_float64_reference) {
                           &simd::avx2::activation_backward);
 }
 
-// The masked tail runs the same vector code as the body, so an element's
-// value must not depend on where it sits or how long the buffer is.
 TEST(avx2_tail_lengths_are_position_independent) {
-  const std::vector<float> z = sweep_inputs();
-  for (ActivationKind k : kAllKinds) {
-    std::vector<float> full(z.size()), dfull(z.size()), ones(z.size(), 1.0f);
-    simd::avx2::activation_forward(k, z.data(), full.data(), (int)z.size());
-    simd::avx2::activation_backward(k, z.data(), full.data(), ones.data(), dfull.data(),
-                                    (int)z.size());
-    for (int len = 1; len <= 17; len++) {
-      for (int off : {0, 3, 11000}) {
-        std::vector<float> a(len + 1, -7.0f), d(len + 1, -7.0f);
-        simd::avx2::activation_forward(k, z.data() + off, a.data(), len);
-        simd::avx2::activation_backward(k, z.data() + off, full.data() + off, ones.data(), d.data(),
-                                        len);
-        for (int i = 0; i < len; i++) {
-          ASSERT_EQ(a[i], full[off + i]);
-          ASSERT_EQ(d[i], dfull[off + i]);
-        }
-        ASSERT_EQ(a[len], -7.0f);  // nothing written past n
-        ASSERT_EQ(d[len], -7.0f);
-      }
-    }
-  }
+  check_tail_position_independent(&simd::avx2::activation_forward, &simd::avx2::activation_backward);
 }
 
 TEST(avx2_backward_allows_dZ_aliasing_dA) {
-  const std::vector<float> z = sweep_inputs();
-  const int n = (int)z.size();
-  for (ActivationKind k : kAllKinds) {
-    std::vector<float> a(n), sep(n), dA(n);
-    for (int i = 0; i < n; i++) dA[i] = 0.1f * (float)((i % 7) - 3);
-    simd::avx2::activation_forward(k, z.data(), a.data(), n);
-    simd::avx2::activation_backward(k, z.data(), a.data(), dA.data(), sep.data(), n);
-    simd::avx2::activation_backward(k, z.data(), a.data(), dA.data(), dA.data(), n);
-    for (int i = 0; i < n; i++) ASSERT_EQ(dA[i], sep[i]);
-  }
+  check_dZ_aliasing_dA(&simd::avx2::activation_forward, &simd::avx2::activation_backward);
+}
+
+// Compiled in every build; only runs where the CPU has AVX-512.
+TEST(avx512_matches_float64_reference) {
+  if (!kHave512) return;
+  check_against_reference("avx512", &simd::avx512::activation_forward, &simd::avx512::activation_backward);
+}
+
+TEST(avx512_tail_lengths_are_position_independent) {
+  if (!kHave512) return;
+  check_tail_position_independent(&simd::avx512::activation_forward, &simd::avx512::activation_backward);
+}
+
+TEST(avx512_backward_allows_dZ_aliasing_dA) {
+  if (!kHave512) return;
+  check_dZ_aliasing_dA(&simd::avx512::activation_forward, &simd::avx512::activation_backward);
 }
 
 TEST(leaky_relu_and_elu_closed_form) {

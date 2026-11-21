@@ -195,6 +195,7 @@ struct Tune {
   int dc_max = 1 << 30;
   int pf = 16;
   int pf_pack = 8;
+  int fwd_pack = 1;
 };
 #ifdef FASTMLP_AVX512_TUNING
 Tune g_tune;  // development builds only: benchmarks sweep it
@@ -204,6 +205,8 @@ constexpr Tune g_tune{};
 }  // namespace
 #endif
 namespace {
+
+constexpr int kFwdPackFloats = 64 * 1024;
 
 struct Gemm {
   const float* A;
@@ -268,12 +271,25 @@ void run(const Gemm& g) {
 
         const float* panel = g.Bm + (long)d0 * g.ldb + p0;
         long ldp = g.ldb;
-        if (g.pack_bm) {
+        // The forward gets no pack scratch (Wp is already packed, at a row
+        // stride of one or more pages); a thread-local one serves when the
+        // contiguous copy pays: M >= 128 rows reusing it and a Wp beyond the
+        // L2 -- +4-5% on the 2048-wide layers at batch 256, while on smaller
+        // M or an L2-resident Wp the copy costs 3-15% (interleaved A/B).
+        static thread_local float tl_pack[kFwdPackFloats];
+        float* packbuf = g.pack;
+        bool do_pack = g.pack_bm;
+        if (!do_pack && g_tune.fwd_pack && g.M >= 128 && 4.0 * g.D * g.ldb > 2.0 * 1024 * 1024 &&
+            dcur * nr * kVW <= kFwdPackFloats) {
+          do_pack = true;
+          packbuf = tl_pack;
+        }
+        if (do_pack) {
           // Contiguous copy of the slice: walks all L1 sets (a power-of-two
           // ldb maps every row onto a few of them) and turns the tiles'
           // strided walk into a sequential one. Zero-padded past a masked
           // tail.
-          float* dst = g.pack;
+          float* dst = packbuf;
           const int w = nr * kVW;
           const long pfo = (long)g_tune.pf_pack * g.ldb;
           for (int d = 0; d < dcur; d++) {
@@ -290,7 +306,7 @@ void run(const Gemm& g) {
         }
         const float* a = g.A + (long)m0 * g.lda + d0;
         float* c = g.C + (long)m0 * g.ldc + p0;
-        const int pf = g.pack_bm ? 0 : g_tune.pf;
+        const int pf = do_pack ? 0 : g_tune.pf;
         switch (nr) {
           case 1: run_m_any<1>(masked, a, g.lda, panel, ldp, c, g.ldc, mrows, dcur, init, bias, m, pf); break;
           case 2: run_m_any<2>(masked, a, g.lda, panel, ldp, c, g.ldc, mrows, dcur, init, bias, m, pf); break;
