@@ -5,8 +5,10 @@
 // the math" from "is the gradient correct" (already covered elsewhere).
 #include "fastmlp/optimizer.hpp"
 #include "fastmlp/simd/gemm_kernel.hpp"
+#include "fastmlp/simd/optim_kernel.hpp"
 
 #include <cmath>
+#include <random>
 #include <vector>
 
 #include "test_harness.hpp"
@@ -255,6 +257,43 @@ TEST(step_keeps_packed_forward_weights_in_sync) {
     for (int i = 0; i < 4 * sizes[2]; i++) ASSERT_NEAR(y[i], ref[i], 1e-4);
     const float* y1 = model.forward({x.data()}, 1);
     for (int i = 0; i < sizes[2]; i++) ASSERT_NEAR(y1[i], ref[i], 1e-4);
+  }
+}
+
+// The avx512 Adam kernel (Newton-refined rsqrt/rcp instead of sqrt/div)
+// against the scalar IEEE one, element by element over many steps, on state
+// that includes exact zeros (vhat == 0: sqrt must give 0, not NaN), signed
+// gradients across magnitudes, and every tail length.
+TEST(adam_avx512_kernel_matches_scalar) {
+  if (!(__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
+        __builtin_cpu_supports("avx512dq") && __builtin_cpu_supports("avx512bw")))
+    return;
+  std::mt19937 rng(7);
+  std::uniform_real_distribution<float> u(-1.0f, 1.0f);
+  for (int n : {1, 7, 15, 16, 17, 31, 33, 64, 1000}) {
+    std::vector<float> p0(n), ps(n), pv(n), ms(n, 0.0f), mv(n, 0.0f), vs(n, 0.0f), vv(n, 0.0f), g(n);
+    for (auto& x : p0) x = u(rng);
+    ps = p0;
+    pv = p0;
+    for (int t = 1; t <= 50; t++) {
+      for (int j = 0; j < n; j++) {
+        // a third of the elements never see a gradient (state stays 0)
+        g[j] = (j % 3 == 0) ? 0.0f : u(rng) * std::pow(10.0f, (float)((j + t) % 7 - 4));
+      }
+      fastmlp::simd::AdamStep s{1e-3f, 0.9f, 0.999f, 1e-8f, (t % 2) ? 0.0f : 1e-2f,
+                                1.0f / (1.0f - std::pow(0.9f, (float)t)), 1.0f / (1.0f - std::pow(0.999f, (float)t))};
+      fastmlp::simd::scalar::adam_update_f32(ps.data(), g.data(), ms.data(), vs.data(), n, s);
+      fastmlp::simd::avx512::adam_update_f32(pv.data(), g.data(), mv.data(), vv.data(), n, s);
+    }
+    for (int j = 0; j < n; j++) {
+      ASSERT_TRUE(std::isfinite(pv[j]));
+      // m and v: the same arithmetic, up to where GCC contracts the scalar
+      // loop's a*b + c*d into an FMA (an ulp or so per step)
+      ASSERT_NEAR(mv[j], ms[j], 1e-5 * std::fabs(ms[j]) + 1e-30);
+      ASSERT_NEAR(vv[j], vs[j], 1e-5 * std::fabs(vs[j]) + 1e-30);
+      // the update itself carries ~2-3 ulp per step; over 50 steps of ~1e-3
+      ASSERT_NEAR(pv[j], ps[j], 1e-6);
+    }
   }
 }
 

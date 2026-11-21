@@ -1,5 +1,7 @@
 #include "fastmlp/optimizer.hpp"
 
+#include "fastmlp/simd/optim_kernel.hpp"
+
 #include <cmath>
 
 namespace fastmlp {
@@ -22,7 +24,7 @@ SGD::SGD(Module& root, float lr, float momentum, float weight_decay)
   }
 }
 
-// Same __restrict rationale as adam_update below: reached through members,
+// Same __restrict rationale as scalar::adam_update_f32 (simd/optim_scalar.cpp): reached through members,
 // the compiler cannot prove p/g/vel do not alias and leaves the loop scalar.
 // The momentum branch is hoisted out of the loop body too -- it is loop-
 // invariant, but leaving it inside blocks vectorization of the common
@@ -82,42 +84,13 @@ Adam::Adam(Module& root, float lr, float beta1, float beta2, float eps, float we
   }
 }
 
-// One Adam update over a contiguous parameter array.
-//
-// The __restrict qualifiers are load-bearing, not decoration: with the
-// arrays reached through members (m_W_[i][j] etc.) the compiler cannot prove
-// W does not alias m/v, so it kept the whole loop scalar -- and a scalar
-// Adam step measured 69 cycles/parameter (bench_breakdown: 16.9% of an
-// entire MNIST training step, at 1.7 GB/s). Hoisting to restrict-qualified
-// locals lets it vectorize the divide and sqrt 8-wide.
-//
-// The two bias corrections are passed pre-reciprocated so the per-element
-// work is a multiply rather than a divide; only the final
-// lr*mhat/(sqrt(vhat)+eps) stays a real division, since folding that into a
-// reciprocal-multiply changes results by more than test_optimizer's 1e-4
-// tolerance against the closed-form reference.
-static void adam_update(float* __restrict p, const float* __restrict g_in,
-                         float* __restrict m, float* __restrict v, int n, float lr,
-                         float beta1, float beta2, float eps, float weight_decay,
-                         float inv_bc1, float inv_bc2) {
-  const float one_minus_b1 = 1.0f - beta1;
-  const float one_minus_b2 = 1.0f - beta2;
-  for (int j = 0; j < n; j++) {
-    float g = g_in[j] + weight_decay * p[j];
-    float mj = beta1 * m[j] + one_minus_b1 * g;
-    float vj = beta2 * v[j] + one_minus_b2 * g * g;
-    m[j] = mj;
-    v[j] = vj;
-    float mhat = mj * inv_bc1;
-    float vhat = vj * inv_bc2;
-    p[j] -= lr * mhat / (std::sqrt(vhat) + eps);
-  }
-}
-
 void Adam::step() {
   t_++;
-  float inv_bc1 = 1.0f / (1.0f - std::pow(beta1_, (float)t_));
-  float inv_bc2 = 1.0f / (1.0f - std::pow(beta2_, (float)t_));
+  const float inv_bc1 = 1.0f / (1.0f - std::pow(beta1_, (float)t_));
+  const float inv_bc2 = 1.0f / (1.0f - std::pow(beta2_, (float)t_));
+  // The per-element arithmetic is the active backend's (simd/optim_kernel.hpp).
+  const simd::AdamStep sw{lr_, beta1_, beta2_, eps_, weight_decay_, inv_bc1, inv_bc2};
+  const simd::AdamStep sb{lr_, beta1_, beta2_, eps_, /*weight_decay=*/0.0f, inv_bc1, inv_bc2};
 
   for (size_t i = 0; i < params_.size(); i++) {
     Linear* l = params_[i];
@@ -126,11 +99,9 @@ void Adam::step() {
     float* m = m_W_[i].data();
     float* v = v_W_[i].data();
     l->update_weights([&](float* w, const float* g, size_t off, size_t n) {
-      adam_update(w, g, m + off, v + off, (int)n, lr_, beta1_, beta2_, eps_, weight_decay_,
-                   inv_bc1, inv_bc2);
+      simd::adam_update_f32(w, g, m + off, v + off, (int)n, sw);
     });
-    adam_update(l->bias(), l->bias_grad(), m_b_[i].data(), v_b_[i].data(), l->out_features(),
-                 lr_, beta1_, beta2_, eps_, /*weight_decay=*/0.0f, inv_bc1, inv_bc2);
+    simd::adam_update_f32(l->bias(), l->bias_grad(), m_b_[i].data(), v_b_[i].data(), l->out_features(), sb);
   }
 }
 
