@@ -36,6 +36,8 @@
 
 #include <cstddef>
 
+#include "fastmlp/simd/tuning.hpp"
+
 namespace fastmlp::simd {
 
 // PACKED K-SLICE SCRATCH (the backward kernels' `pack` argument)
@@ -58,8 +60,9 @@ namespace fastmlp::simd {
 // GFLOP/s at K=512, 69.4 -> 113.6 at K=1024.
 //
 // Caller-owned and preallocated like every other buffer here. Backends may
-// ignore it (scalar does); it must still be valid and this large.
-inline size_t pack_scratch_floats(int rows) { return (size_t)rows * 16; }
+// ignore it (scalar does); it must still be valid and this large. The slice
+// width is the widest any backend uses (tuning::kPackSliceFloats).
+inline size_t pack_scratch_floats(int rows) { return (size_t)rows * tuning::kPackSliceFloats; }
 
 // Ground truth: portable, ISA-independent, no intrinsics. Always built and
 // always available -- this is what every other backend is checked against.
@@ -125,8 +128,14 @@ void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int
 //    L1's 64 sets, and an 8-way cache thrashes long before K rows are read.
 //    Making the line count odd makes it coprime with 64, so consecutive rows
 //    walk all 64 sets. Costs at most 16 floats per row.
+//
+// The same rule holds on the Emerald Rapids target (measured set-conflict
+// map, benchmarks/hardware_analysis/results/emr/memory.txt section 4: an odd
+// line count is conflict-free up to 256 rows in both the 12-way L1 and the
+// 16-way L2). Its avx512 kernels read Wp in 16-float vectors and mask the
+// last partial tile, so they need no padding beyond this either.
 inline int packed_ldw(int N) {
-  constexpr int kNTile = 16;  // kNR(2) * 8 floats, see gemm_kernel_avx2.cpp
+  constexpr int kNTile = 16;  // avx2: kNR(2) * 8 floats; avx512: one zmm
   int ld = ((N + kNTile - 1) / kNTile) * kNTile;
   if ((ld / kNTile) % 2 == 0) ld += kNTile;
   return ld;
@@ -170,11 +179,35 @@ void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int
 
 }  // namespace avx2
 
-// Compile-time selector (FASTMLP_SIMD_BACKEND=AVX2 defines
-// FASTMLP_BACKEND_AVX2); the shipped build always uses avx2. scalar is the
-// numerical ground truth for tests, not a runtime fallback: the target CPU
-// is fixed.
-#if defined(FASTMLP_BACKEND_AVX2)
+// Hand-written AVX-512 kernels for the Emerald Rapids target. Same
+// signatures again. Always compiled (with that ISA, whatever the rest of the
+// build targets) so tests can compare them, but only callable on a CPU that
+// has AVX-512 -- tests check before calling.
+namespace avx512 {
+
+void gemm_xwt_f32(const float* X, const float* W, const float* bias,
+                   float* Y, int B, int K, int N);
+void gemv_xwt_f32(const float* x, const float* W, const float* bias, float* y, int K, int N);
+void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K,
+                  int N, float* pack);
+void gemm_dW_accum_f32(const float* X, const float* dY, float* dW, int B,
+                        int K, int N);
+void bias_grad_accum_f32(const float* dY, float* db, int B, int N, bool accumulate = true);
+void pack_transpose_f32(const float* src, float* dst, int src_rows, int src_cols, int ld_dst);
+void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst);
+void gemm_xwtp_f32(const float* X, const float* Wp, const float* bias,
+                    float* Y, int B, int K, int N, int ldWp);
+void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N,
+                          float* pack, bool accumulate = true);
+
+}  // namespace avx512
+
+// Compile-time selector (FASTMLP_SIMD_BACKEND=AVX2 / AVX512 defines
+// FASTMLP_BACKEND_AVX2 / FASTMLP_BACKEND_AVX512). scalar is the numerical
+// ground truth for tests, not a runtime fallback: each target CPU is fixed.
+#if defined(FASTMLP_BACKEND_AVX512)
+using namespace avx512;
+#elif defined(FASTMLP_BACKEND_AVX2)
 using namespace avx2;
 #else
 using namespace scalar;

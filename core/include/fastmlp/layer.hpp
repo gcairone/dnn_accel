@@ -1,6 +1,7 @@
 #pragma once
 #include "fastmlp/activation.hpp"
 #include "fastmlp/simd/gemm_kernel.hpp"
+#include "fastmlp/simd/aligned.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -93,8 +94,11 @@ class Linear {
     // Blocks of 16 rows, so each transposed block writes one whole 64-byte
     // line per Wp row (8 rows = half lines, touched twice) -- measured best
     // of 8/16/32/64/whole-matrix -- and of >= ~2k elements, so a narrow
-    // layer is not cut into many tiny optimizer calls.
-    const int rows = std::max(16, ((2048 / std::max(K, 1)) + 15) / 16 * 16);
+    // layer is not cut into many tiny optimizer calls. Both numbers are
+    // per-target (simd/tuning.hpp).
+    constexpr int kAlign = simd::tuning::kUpdateRowAlign;
+    const int rows = std::max(kAlign, ((simd::tuning::kUpdateMinElems / std::max(K, 1)) + kAlign - 1) /
+                                          kAlign * kAlign);
     for (int r0 = 0; r0 < N; r0 += rows) {
       const int r1 = std::min(N, r0 + rows);
       const size_t off = (size_t)r0 * K;
@@ -116,33 +120,33 @@ class Linear {
   LinearConfig cfg_;
   bool frozen_ = false;
 
-  std::vector<float> W_, b_;  // out_features*in_features, out_features
+  simd::AlignedVector<float> W_, b_;  // out_features*in_features, out_features
 
   // W_ transposed into (in_features, ldWp_) for the forward microkernel (see
   // "PACKED FORWARD" in simd/gemm_kernel.hpp). update_weights() keeps it in
   // sync; any other mutable access to W_ sets w_dirty_ and the next batched
   // forward() rebuilds it.
-  std::vector<float> Wp_;
+  simd::AlignedVector<float> Wp_;
   int ldWp_ = 0;
   bool w_dirty_ = true;
 
   // Always allocated: GEMM writes into z_buf_, activation reads it into a_buf_
   // (the buffer forward() returns).
-  std::vector<float> z_buf_, a_buf_;
+  simd::AlignedVector<float> z_buf_, a_buf_;
 
   // Only allocated when !inference_only:
-  std::vector<float> x_cache_;  // input cache, needed for dW in backward()
-  std::vector<float> dyt_buf_;  // dz_buf_ transposed, for gemm_dW_accum_t_f32
+  simd::AlignedVector<float> x_cache_;  // input cache, needed for dW in backward()
+  simd::AlignedVector<float> dyt_buf_;  // dz_buf_ transposed, for gemm_dW_accum_t_f32
   // mutable: weight_grad()/bias_grad() are logically const but may have to
   // write the zeros a pending zero_grad() deferred.
-  mutable std::vector<float> dW_, db_;
+  mutable simd::AlignedVector<float> dW_, db_;
   mutable bool grad_zero_pending_ = false;
   void materialize_zero_grad() const;
-  std::vector<float> dz_buf_;  // scratch for activation_backward output
-  std::vector<float> dx_buf_;  // the buffer backward() returns
+  simd::AlignedVector<float> dz_buf_;  // scratch for activation_backward output
+  simd::AlignedVector<float> dx_buf_;  // the buffer backward() returns
   // L1 scratch the dX/dW kernels copy their 16-wide K-slice into, sized for
   // whichever of the two needs more rows -- see pack_scratch_floats().
-  std::vector<float> pack_buf_;
+  simd::AlignedVector<float> pack_buf_;
 };
 
 }  // namespace fastmlp

@@ -1,7 +1,9 @@
-// The hand-written AVX2+FMA kernels checked against TWO independent oracles
-// -- the project's own scalar reference (always) and BLIS's cblas_sgemm
-// (when available), across the benchmarked layer shapes, tail/edge
-// shapes (K/N/B not multiples of the tile), and seeded random fuzz.
+// The hand-written AVX2+FMA and AVX-512 kernels checked against TWO
+// independent oracles -- the project's own scalar reference (always) and
+// BLIS's cblas_sgemm (when available), across the benchmarked layer shapes,
+// tail/edge shapes (K/N/B not multiples of the tile), and seeded random fuzz.
+// The avx512 checks run only on a CPU that has AVX-512 (they are compiled in
+// every build).
 #include "fastmlp/simd/gemm_kernel.hpp"
 
 #include <algorithm>
@@ -18,6 +20,9 @@
 using namespace fastmlp::simd;
 
 namespace {
+
+const bool kHave512 = __builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512bw") &&
+                      __builtin_cpu_supports("avx512vl") && __builtin_cpu_supports("avx512dq");
 
 void fill_pattern(std::vector<float>& v, int period, int offset) {
   for (size_t i = 0; i < v.size(); i++) {
@@ -50,6 +55,11 @@ void check_gemm_xwt(int B, int K, int N, bool with_bias) {
   scalar::gemm_xwt_f32(X.data(), W.data(), bias_ptr, Y_scalar.data(), B, K, N);
   avx2::gemm_xwt_f32(X.data(), W.data(), bias_ptr, Y_avx2.data(), B, K, N);
   for (size_t i = 0; i < Y_scalar.size(); i++) assert_close(Y_scalar[i], Y_avx2[i]);
+  if (kHave512) {
+    std::vector<float> Y_512((size_t)B * N, -5.0f);
+    avx512::gemm_xwt_f32(X.data(), W.data(), bias_ptr, Y_512.data(), B, K, N);
+    for (size_t i = 0; i < Y_scalar.size(); i++) assert_close(Y_scalar[i], Y_512[i]);
+  }
 
 #ifdef FASTMLP_HAVE_BLIS
   std::vector<float> Y_blis((size_t)B * N, 0.0f);
@@ -72,21 +82,37 @@ void check_gemm_dX(int B, int K, int N) {
   scalar::gemm_dX_f32(dY.data(), W.data(), dX_scalar.data(), B, K, N, pack.data());
   avx2::gemm_dX_f32(dY.data(), W.data(), dX_avx2.data(), B, K, N, pack.data());
   for (size_t i = 0; i < dX_scalar.size(); i++) assert_close(dX_scalar[i], dX_avx2[i]);
+  if (kHave512) {
+    std::vector<float> dX_512((size_t)B * K, -5.0f);
+    avx512::gemm_dX_f32(dY.data(), W.data(), dX_512.data(), B, K, N, pack.data());
+    for (size_t i = 0; i < dX_scalar.size(); i++) assert_close(dX_scalar[i], dX_512[i]);
+    // and without a pack buffer (the unpacked branch)
+    std::vector<float> dX_512u((size_t)B * K, -6.0f);
+    avx512::gemm_dX_f32(dY.data(), W.data(), dX_512u.data(), B, K, N, nullptr);
+    for (size_t i = 0; i < dX_scalar.size(); i++) assert_close(dX_scalar[i], dX_512u[i]);
+  }
 }
 
 void check_gemm_dW(int B, int K, int N) {
   std::vector<float> X((size_t)B * K), dY((size_t)B * N);
   fill_pattern(X, 13, 6);
   fill_pattern(dY, 7, 3);
-  std::vector<float> dW_scalar((size_t)N * K, 0.0f), dW_avx2((size_t)N * K, 0.0f);
+  std::vector<float> dW_scalar((size_t)N * K, 0.0f), dW_avx2((size_t)N * K, 0.0f),
+      dW_512((size_t)N * K, 0.0f);
   scalar::gemm_dW_accum_f32(X.data(), dY.data(), dW_scalar.data(), B, K, N);
   avx2::gemm_dW_accum_f32(X.data(), dY.data(), dW_avx2.data(), B, K, N);
+  if (kHave512) avx512::gemm_dW_accum_f32(X.data(), dY.data(), dW_512.data(), B, K, N);
   for (size_t i = 0; i < dW_scalar.size(); i++) assert_close(dW_scalar[i], dW_avx2[i]);
+  if (kHave512)
+    for (size_t i = 0; i < dW_scalar.size(); i++) assert_close(dW_scalar[i], dW_512[i]);
 
   // accumulation semantics: a second call must add, not overwrite, identically.
   scalar::gemm_dW_accum_f32(X.data(), dY.data(), dW_scalar.data(), B, K, N);
   avx2::gemm_dW_accum_f32(X.data(), dY.data(), dW_avx2.data(), B, K, N);
+  if (kHave512) avx512::gemm_dW_accum_f32(X.data(), dY.data(), dW_512.data(), B, K, N);
   for (size_t i = 0; i < dW_scalar.size(); i++) assert_close(dW_scalar[i], dW_avx2[i]);
+  if (kHave512)
+    for (size_t i = 0; i < dW_scalar.size(); i++) assert_close(dW_scalar[i], dW_512[i]);
 }
 
 void check_bias_grad(int B, int N) {
@@ -96,6 +122,16 @@ void check_bias_grad(int B, int N) {
   scalar::bias_grad_accum_f32(dY.data(), db_scalar.data(), B, N);
   avx2::bias_grad_accum_f32(dY.data(), db_avx2.data(), B, N);
   for (int i = 0; i < N; i++) assert_close(db_scalar[i], db_avx2[i]);
+  if (kHave512) {
+    std::vector<float> db_512((size_t)N, 0.0f);
+    avx512::bias_grad_accum_f32(dY.data(), db_512.data(), B, N);
+    for (int i = 0; i < N; i++) assert_close(db_scalar[i], db_512[i]);
+    avx512::bias_grad_accum_f32(dY.data(), db_512.data(), B, N);  // accumulates
+    for (int i = 0; i < N; i++) assert_close(2.0f * db_scalar[i], db_512[i]);
+    std::vector<float> db_over((size_t)N, 7e5f);
+    avx512::bias_grad_accum_f32(dY.data(), db_over.data(), B, N, false);
+    for (int i = 0; i < N; i++) assert_close(db_over[i], db_scalar[i]);
+  }
 
   // accumulate=false must ignore whatever db held (Linear relies on it after
   // a deferred zero_grad): start from garbage, expect the from-zero result.
@@ -114,8 +150,10 @@ void check_pack_transpose(int rows, int cols) {
   fill_pattern(src, 11, 5);
   std::vector<float> dst_scalar((size_t)cols * ld, -1.0f), dst_avx2((size_t)cols * ld, -2.0f);
 
+  std::vector<float> dst_512((size_t)cols * ld, -9.0f);
   scalar::pack_transpose_f32(src.data(), dst_scalar.data(), rows, cols, ld);
   avx2::pack_transpose_f32(src.data(), dst_avx2.data(), rows, cols, ld);
+  if (kHave512) avx512::pack_transpose_f32(src.data(), dst_512.data(), rows, cols, ld);
 
   for (int c = 0; c < cols; c++) {
     for (int r = 0; r < ld; r++) {
@@ -124,6 +162,7 @@ void check_pack_transpose(int rows, int cols) {
       float expect = (r < rows) ? src[(size_t)r * cols + c] : 0.0f;
       assert_close(dst_scalar[(size_t)c * ld + r], expect);
       assert_close(dst_avx2[(size_t)c * ld + r], expect);
+      if (kHave512) assert_close(dst_512[(size_t)c * ld + r], expect);
     }
   }
 
@@ -133,12 +172,20 @@ void check_pack_transpose(int rows, int cols) {
   for (int c = 0; c < cols; c++)
     for (int r = 0; r < rows; r++)
       ASSERT_EQ(tight[(size_t)c * rows + r], src[(size_t)r * cols + c]);
+  if (kHave512) {
+    std::vector<float> tight512((size_t)cols * rows, -3.0f);
+    avx512::pack_transpose_f32(src.data(), tight512.data(), rows, cols, rows);
+    for (int c = 0; c < cols; c++)
+      for (int r = 0; r < rows; r++)
+        ASSERT_EQ(tight512[(size_t)c * rows + r], src[(size_t)r * cols + c]);
+  }
 
   // transpose_rows_f32 on a sub-range that starts and ends off the 8-row
   // tile (Linear::update_weights repacks block by block): exactly columns
   // [r0, r1) are written, everything else -- padding included -- untouched.
   const int r0 = rows / 3, r1 = rows - rows / 4;
-  for (auto* be : {&scalar::transpose_rows_f32, &avx2::transpose_rows_f32}) {
+  for (auto* be : {&scalar::transpose_rows_f32, &avx2::transpose_rows_f32, &avx512::transpose_rows_f32}) {
+    if (be == &avx512::transpose_rows_f32 && !kHave512) continue;
     std::vector<float> part((size_t)cols * ld, -4.0f);
     (*be)(src.data(), part.data(), r0, r1, cols, ld);
     for (int c = 0; c < cols; c++)
@@ -171,6 +218,14 @@ void check_gemm_xwtp(int B, int K, int N, bool with_bias) {
     assert_close(Y_scalar[i], Y_ref[i]);
     assert_close(Y_avx2[i], Y_ref[i]);
   }
+  if (kHave512) {
+    // Y one row longer than needed, guard-filled: the kernel must write
+    // exactly B*N floats (masked N tails), nothing past them.
+    std::vector<float> Y_512((size_t)B * N + 16, -7.0f);
+    avx512::gemm_xwtp_f32(X.data(), Wp.data(), bias_ptr, Y_512.data(), B, K, N, ldWp);
+    for (size_t i = 0; i < Y_ref.size(); i++) assert_close(Y_512[i], Y_ref[i]);
+    for (size_t i = Y_ref.size(); i < Y_512.size(); i++) ASSERT_EQ(Y_512[i], -7.0f);
+  }
 }
 
 // Likewise the transposed-dY dW accumulation must agree with the untransposed
@@ -187,15 +242,24 @@ void check_gemm_dW_t(int B, int K, int N) {
   fill_pattern(dW_ref, 5, 2);  // non-zero start: verifies accumulation, not assignment
   dW_scalar = dW_ref;
   dW_avx2 = dW_ref;
+  std::vector<float> dW_512 = dW_ref, dW_512u = dW_ref;
 
   scalar::gemm_dW_accum_f32(X.data(), dY.data(), dW_ref.data(), B, K, N);
   std::vector<float> pack(pack_scratch_floats(std::max(B, N)));
   scalar::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_scalar.data(), B, K, N, pack.data());
   avx2::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_avx2.data(), B, K, N, pack.data());
+  if (kHave512) {
+    avx512::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_512.data(), B, K, N, pack.data());
+    avx512::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_512u.data(), B, K, N, nullptr);
+  }
 
   for (size_t i = 0; i < dW_ref.size(); i++) {
     assert_close(dW_scalar[i], dW_ref[i]);
     assert_close(dW_avx2[i], dW_ref[i]);
+    if (kHave512) {
+      assert_close(dW_512[i], dW_ref[i]);
+      assert_close(dW_512u[i], dW_ref[i]);
+    }
   }
 
   // accumulate=false: garbage in dW must not leak into the result.
@@ -204,9 +268,13 @@ void check_gemm_dW_t(int B, int K, int N) {
   std::vector<float> dW_over_s((size_t)N * K, 1e6f), dW_over_a((size_t)N * K, -1e6f);
   scalar::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_over_s.data(), B, K, N, pack.data(), false);
   avx2::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_over_a.data(), B, K, N, pack.data(), false);
+  std::vector<float> dW_over_512((size_t)N * K, 3e5f);
+  if (kHave512)
+    avx512::gemm_dW_accum_t_f32(X.data(), dYt.data(), dW_over_512.data(), B, K, N, pack.data(), false);
   for (size_t i = 0; i < dW_zero_ref.size(); i++) {
     assert_close(dW_over_s[i], dW_zero_ref[i]);
     assert_close(dW_over_a[i], dW_zero_ref[i]);
+    if (kHave512) assert_close(dW_over_512[i], dW_zero_ref[i]);
   }
 }
 
@@ -224,10 +292,15 @@ void check_gemv_xwt(int K, int N, bool with_bias) {
   scalar::gemm_xwt_f32(x.data(), W.data(), bias_ptr, y_ref.data(), 1, K, N);
   scalar::gemv_xwt_f32(x.data(), W.data(), bias_ptr, y_scalar.data(), K, N);
   avx2::gemv_xwt_f32(x.data(), W.data(), bias_ptr, y_avx2.data(), K, N);
+  std::vector<float> y_512((size_t)N + 16, -8.0f);
+  if (kHave512) avx512::gemv_xwt_f32(x.data(), W.data(), bias_ptr, y_512.data(), K, N);
   for (size_t i = 0; i < y_ref.size(); i++) {
     assert_close(y_scalar[i], y_ref[i]);
     assert_close(y_avx2[i], y_ref[i]);
+    if (kHave512) assert_close(y_512[i], y_ref[i]);
   }
+  if (kHave512)
+    for (size_t i = y_ref.size(); i < y_512.size(); i++) ASSERT_EQ(y_512[i], -8.0f);
 }
 
 void check_all(int B, int K, int N) {
@@ -290,6 +363,20 @@ TEST(packed_k_slice_shapes) {
       // the suite's large layers, where the 8-row-block transpose and the
       // overwriting dW run on DRAM-resident operands
       {64, 1024, 1024}, {64, 784, 1024}, {64, 2048, 512}, {64, 512, 2048},
+  };
+  for (auto& s : shapes) check_all(s.B, s.K, s.N);
+}
+
+TEST(avx512_tile_edges) {
+  // The avx512 tiles: N around multiples of 16 (one zmm) and 32 (the 2-vector
+  // panel), B around multiples of the 12/8/6-row tiles, depth past the
+  // 192-row depth block in each of the three GEMMs (forward K, dX N, dW B),
+  // and N <= 8 for the narrow dot-product forward.
+  Shape shapes[] = {
+      {12, 16, 16},   {13, 17, 31},  {24, 33, 32},  {25, 31, 33},  {11, 47, 48},  {36, 48, 49},
+      {37, 64, 64},   {6, 65, 65},   {7, 96, 95},   {48, 193, 40}, {30, 385, 70}, {200, 40, 200},
+      {193, 50, 17},  {64, 300, 1},  {64, 300, 2},  {17, 300, 3},  {40, 20, 4},   {33, 33, 5},
+      {16, 17, 6},    {15, 64, 7},   {64, 128, 8},  {64, 128, 9},  {3, 1, 8},     {256, 784, 10},
   };
   for (auto& s : shapes) check_all(s.B, s.K, s.N);
 }

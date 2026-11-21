@@ -19,12 +19,13 @@ option(FASTMLP_BUILD_BENCHMARKS "Build the C++ benchmark suite" OFF)
 option(FASTMLP_BUILD_PYTHON "Build the nanobind Python extension" ON)
 option(FASTMLP_BUILD_EXAMPLES "Build the C++-API example training programs" OFF)
 
-# SCALAR is the dev/testing ground-truth backend; AVX2 is what the shipped
-# library actually uses. This is a compile-time selector for building/testing
-# two independent implementations side by side, not a runtime dispatch
-# mechanism (see core/include/fastmlp/simd/gemm_kernel.hpp).
-set(FASTMLP_SIMD_BACKEND "SCALAR" CACHE STRING "Active fastmlp_core GEMM backend: SCALAR or AVX2")
-set_property(CACHE FASTMLP_SIMD_BACKEND PROPERTY STRINGS SCALAR AVX2)
+# SCALAR is the dev/testing ground-truth backend; AVX2 is the library tuned
+# for the original Zen 2 target, AVX512 the one tuned for the Emerald Rapids
+# target (cmake/DetectISA.cmake). This is a compile-time selector for
+# building/testing independent implementations side by side, not a runtime
+# dispatch mechanism (see core/include/fastmlp/simd/gemm_kernel.hpp).
+set(FASTMLP_SIMD_BACKEND "SCALAR" CACHE STRING "Active fastmlp_core GEMM backend: SCALAR, AVX2 or AVX512")
+set_property(CACHE FASTMLP_SIMD_BACKEND PROPERTY STRINGS SCALAR AVX2 AVX512)
 
 include(cmake/DetectISA.cmake)
 
@@ -41,6 +42,20 @@ if(FASTMLP_BLIS_HEADER AND FASTMLP_BLIS_LIBRARY)
 else()
   set(FASTMLP_BLIS_FOUND FALSE)
   message(STATUS "fastmlp: BLIS not found - BLIS-dependent tests/benchmarks will be skipped")
+endif()
+
+# MKL: a performance reference for the kernel benchmarks only (the vendor
+# sgemm tuned for this very CPU is the "how close to the limit" yardstick).
+# Never linked by fastmlp_core. The pip mkl wheel ships only the versioned
+# libmkl_rt.so.3, hence the explicit name.
+set(FASTMLP_MKL_ROOT "/usr/local" CACHE PATH "MKL prefix (include/mkl_cblas.h, lib/libmkl_rt)")
+find_path(FASTMLP_MKL_HEADER mkl_cblas.h PATHS ${FASTMLP_MKL_ROOT}/include NO_DEFAULT_PATH)
+find_library(FASTMLP_MKL_LIBRARY NAMES mkl_rt libmkl_rt.so.3 libmkl_rt.so.2 PATHS ${FASTMLP_MKL_ROOT}/lib NO_DEFAULT_PATH)
+if(FASTMLP_MKL_HEADER AND FASTMLP_MKL_LIBRARY)
+  set(FASTMLP_MKL_FOUND TRUE)
+  message(STATUS "fastmlp: MKL found (benchmark reference only) - ${FASTMLP_MKL_LIBRARY}")
+else()
+  set(FASTMLP_MKL_FOUND FALSE)
 endif()
 
 add_subdirectory(core)

@@ -29,3 +29,18 @@ fastmlp_apply_arch_flags(bench_breakdown)
 add_executable(bench_activation bench_activation.cpp)
 target_link_libraries(bench_activation PRIVATE fastmlp_core)
 fastmlp_apply_arch_flags(bench_activation)
+
+# Per-kernel avx2 vs avx512 vs MKL on the suite's real shapes, timed against
+# a zmm FMA reference (see its header comment). Always built with the
+# Emerald Rapids ISA: the reference loop and the avx512 kernels need it.
+add_executable(bench_kernels bench_kernels.cpp)
+target_link_libraries(bench_kernels PRIVATE fastmlp_core)
+fastmlp_apply_arch_flags(bench_kernels)
+target_compile_options(bench_kernels PRIVATE ${FASTMLP_AVX512_SOURCE_FLAGS})
+if(FASTMLP_MKL_FOUND)
+  target_compile_definitions(bench_kernels PRIVATE FASTMLP_HAVE_MKL)
+  target_include_directories(bench_kernels PRIVATE ${FASTMLP_MKL_HEADER})
+  target_link_libraries(bench_kernels PRIVATE ${FASTMLP_MKL_LIBRARY})
+  get_filename_component(FASTMLP_MKL_LIBDIR ${FASTMLP_MKL_LIBRARY} DIRECTORY)
+  set_target_properties(bench_kernels PROPERTIES BUILD_RPATH ${FASTMLP_MKL_LIBDIR})
+endif()

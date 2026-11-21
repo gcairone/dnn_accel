@@ -1,5 +1,6 @@
 #pragma once
 #include "fastmlp/module.hpp"
+#include "fastmlp/simd/aligned.hpp"
 
 #include <vector>
 
@@ -27,7 +28,7 @@ class SGD : public Optimizer {
 
  private:
   float lr_, momentum_, weight_decay_;
-  std::vector<std::vector<float>> vel_W_, vel_b_;
+  std::vector<simd::AlignedVector<float>> vel_W_, vel_b_;
 };
 
 class Adam : public Optimizer {
@@ -40,7 +41,7 @@ class Adam : public Optimizer {
  private:
   float lr_, beta1_, beta2_, eps_, weight_decay_;
   long t_ = 0;
-  std::vector<std::vector<float>> m_W_, v_W_, m_b_, v_b_;
+  std::vector<simd::AlignedVector<float>> m_W_, v_W_, m_b_, v_b_;
 };
 
 }  // namespace fastmlp

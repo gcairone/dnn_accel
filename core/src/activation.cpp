@@ -37,7 +37,9 @@ const char* activation_names_list() {
 }
 
 void activation_forward(ActivationKind kind, const float* z, float* a, int n) {
-#if defined(FASTMLP_BACKEND_AVX2)
+#if defined(FASTMLP_BACKEND_AVX512)
+  simd::avx512::activation_forward(kind, z, a, n);
+#elif defined(FASTMLP_BACKEND_AVX2)
   simd::avx2::activation_forward(kind, z, a, n);
 #else
   simd::scalar::activation_forward(kind, z, a, n);
@@ -46,7 +48,9 @@ void activation_forward(ActivationKind kind, const float* z, float* a, int n) {
 
 void activation_backward(ActivationKind kind, const float* z, const float* a,
                           const float* dA, float* dZ, int n) {
-#if defined(FASTMLP_BACKEND_AVX2)
+#if defined(FASTMLP_BACKEND_AVX512)
+  simd::avx512::activation_backward(kind, z, a, dA, dZ, n);
+#elif defined(FASTMLP_BACKEND_AVX2)
   simd::avx2::activation_backward(kind, z, a, dA, dZ, n);
 #else
   simd::scalar::activation_backward(kind, z, a, dA, dZ, n);

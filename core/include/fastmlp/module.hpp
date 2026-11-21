@@ -1,5 +1,6 @@
 #pragma once
 #include "fastmlp/layer.hpp"
+#include "fastmlp/simd/aligned.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -92,9 +93,9 @@ class Module {
   std::vector<Linear> layers_;
   int num_leaves_;
 
-  std::vector<float> concat_buf_;  // composite only: own-stack input scratch
-  std::vector<float> dx_own_;      // grad w.r.t. own-stack input (!inference_only)
-  std::vector<std::vector<float>> child_dgrad_bufs_;  // composite && !inference_only
+  simd::AlignedVector<float> concat_buf_;  // composite only: own-stack input scratch
+  simd::AlignedVector<float> dx_own_;      // grad w.r.t. own-stack input (!inference_only)
+  std::vector<simd::AlignedVector<float>> child_dgrad_bufs_;  // composite && !inference_only
 };
 
 }  // namespace fastmlp
