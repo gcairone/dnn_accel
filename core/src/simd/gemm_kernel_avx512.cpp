@@ -187,8 +187,12 @@ constexpr int kNRMax = FASTMLP_AVX512_NRMAX;
 //             within 1-4%, 16 ahead on batch 64.
 //   pf_pack:  the same for the packing copy's source rows: 3-4% on batch-64
 //             dX of the 1024-wide layers, neutral elsewhere.
-// Prefetching the NEXT panel's slice into L2 across the current pass's tiles
-// was tried as well and measured neutral to 4% slower, so it is not done.
+// Tried and measured neutral or worse, so not done: prefetching the NEXT
+// panel's slice into L2 across the current pass's tiles (0-4% slower),
+// prefetching A rows ahead within a tile (up to 1.7x slower on dW, whose A
+// rows are short), prefetchw of a tile's C lines at its start (+-2%), capping
+// the depth block so the Bm slice stays L1-resident (5-12% slower at
+// 128-192), and cldemote of finished C lines (up to 1.5x slower).
 }  // namespace
 struct Tune {
   long a_budget = 768 * 1024;
@@ -441,6 +445,53 @@ void narrow_forward(const float* X, const float* Wp, const float* bias, float* Y
   for (int b0 = 0; b0 < B; b0 += 16) narrow_rows<NN>(X, Wt, bias, Y, b0, min_i(16, B - b0), K, N);
 }
 
+// --- narrow dW (K <= kNarrowDwK): dot products over the batch -----------------
+//
+// dW(N,K) is C with P = K: at K = 2 a 16-wide panel computes 2 useful lanes.
+// Transposed, each element is a dot product of two contiguous rows,
+// dW[n][k] = <dYt[n][:], Xt[k][:]>, Xt being X's K columns transposed once
+// (K*B elements, cheap next to the N*K*B multiply-adds) into a stack buffer.
+// RN rows of dYt x KK columns per group, RN*KK <= 16, reduce16'd together.
+constexpr int kNarrowDwK = 8;
+constexpr int kNarrowDwMaxB = 4096;
+
+template <int KK>
+void narrow_dw(const float* X, const float* dYt, float* dW, int B, int N, bool accumulate) {
+  alignas(64) float Xt[KK * kNarrowDwMaxB];
+  for (int b = 0; b < B; b++)
+    for (int k = 0; k < KK; k++) Xt[k * B + b] = X[(long)b * KK + k];
+  constexpr int RN = 16 / KK;
+  for (int n0 = 0; n0 < N; n0 += RN) {
+    const int rn = min_i(RN, N - n0);
+    __m512 acc[RN][KK];
+    for (int r = 0; r < RN; r++)
+      for (int k = 0; k < KK; k++) acc[r][k] = _mm512_setzero_ps();
+    for (int b = 0; b < B; b += kVW) {
+      const __mmask16 m = head_mask(B - b);
+      __m512 xv[KK];
+#pragma GCC unroll 8
+      for (int k = 0; k < KK; k++) xv[k] = _mm512_maskz_loadu_ps(m, Xt + k * B + b);
+#pragma GCC unroll 16
+      for (int r = 0; r < RN; r++) {
+        if (r < rn) {
+          const __m512 dv = _mm512_maskz_loadu_ps(m, dYt + (long)(n0 + r) * B + b);
+#pragma GCC unroll 8
+          for (int k = 0; k < KK; k++) acc[r][k] = _mm512_fmadd_ps(dv, xv[k], acc[r][k]);
+        }
+      }
+    }
+    __m512 v[16];
+    for (int i = 0; i < 16; i++) v[i] = _mm512_setzero_ps();
+    for (int r = 0; r < RN; r++)
+      for (int k = 0; k < KK; k++) v[r * KK + k] = acc[r][k];
+    alignas(64) float sum[16];
+    _mm512_store_ps(sum, reduce16(v));
+    // rows n0..n0+rn of dW are rn*KK contiguous floats, in the same r*KK+k order
+    float* d = dW + (long)n0 * KK;
+    for (int i = 0; i < rn * KK; i++) d[i] = accumulate ? d[i] + sum[i] : sum[i];
+  }
+}
+
 // --- 16 x 16 transpose ----------------------------------------------------------
 //
 // dst[c * ldd + r] = src[r * lds + c] for r < rows, c < cols (both <= 16).
@@ -528,6 +579,19 @@ void gemm_dX_f32(const float* dY, const float* W, float* dX, int B, int K, int N
 
 void gemm_dW_accum_t_f32(const float* X, const float* dYt, float* dW, int B, int K, int N, float* pack,
                           bool accumulate) {
+  if (K <= kNarrowDwK && B <= kNarrowDwMaxB) {
+    switch (K) {
+      case 1: narrow_dw<1>(X, dYt, dW, B, N, accumulate); return;
+      case 2: narrow_dw<2>(X, dYt, dW, B, N, accumulate); return;
+      case 3: narrow_dw<3>(X, dYt, dW, B, N, accumulate); return;
+      case 4: narrow_dw<4>(X, dYt, dW, B, N, accumulate); return;
+      case 5: narrow_dw<5>(X, dYt, dW, B, N, accumulate); return;
+      case 6: narrow_dw<6>(X, dYt, dW, B, N, accumulate); return;
+      case 7: narrow_dw<7>(X, dYt, dW, B, N, accumulate); return;
+      case 8: narrow_dw<8>(X, dYt, dW, B, N, accumulate); return;
+      default: break;
+    }
+  }
   run({dYt, B, X, K, dW, K, N, B, K, accumulate ? kAccum : kZero, nullptr, pack, pack != nullptr && pack_worth(N)});
 }
 
@@ -587,6 +651,23 @@ void bias_grad_accum_f32(const float* dY, float* db, int B, int N, bool accumula
 }
 
 void transpose_rows_f32(const float* src, float* dst, int r0, int r1, int src_cols, int ld_dst) {
+  // One column (a layer with N = 1 transposing its dY): a plain copy, not a
+  // 64-shuffle transpose per 16 elements.
+  if (src_cols == 1) {
+    for (int r = r0; r < r1; r += kVW) {
+      const __mmask16 m = head_mask(r1 - r);
+      _mm512_mask_storeu_ps(dst + r, m, _mm512_maskz_loadu_ps(m, src + r));
+    }
+    return;
+  }
+  // One or two source rows (W -> Wp of a layer with N <= 2, every optimizer
+  // step): a 16x16 block would spend 64 shuffles and 16 masked stores on
+  // 16-32 elements (~6.5 cycles each, measured); a scalar scatter is ~1.
+  if (r1 - r0 <= 2) {
+    for (int r = r0; r < r1; r++)
+      for (int c = 0; c < src_cols; c++) dst[(long)c * ld_dst + r] = src[(long)r * src_cols + c];
+    return;
+  }
   // Row blocks outermost: the source (W in the repack, often cold) is read as
   // 16 sequential streams.
   for (int r = r0; r < r1; r += 16) {
