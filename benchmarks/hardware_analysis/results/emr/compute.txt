@@ -1,0 +1,86 @@
+# probe_compute, core 0
+
+== 1. core clock, MHz (5 repetitions each: min / median / max) ==
+idle, add r,r chain                        3323   3382   3502
+idle, imul chain (cross-check)             3376   3432   3477
+under ymm FMA (1.5 FMA/cyc)                3256   3406   3529
+under zmm FMA (1.5 FMA/cyc)                2916   2981   3362
+under zmm FMA, 2 s sustained               3028   3107   3227
+
+== 2. FMA throughput vs independent chains (core cycles, median) ==
+1 chain = 1/latency; plateau = number of FMA units
+chains  ymm FMA/cyc ymm flop/cyc  zmm FMA/cyc zmm flop/cyc
+     1         0.26          4.2         0.26          8.4
+     2         0.51          8.2         0.51         16.4
+     3         0.77         12.3         0.78         25.1
+     4         1.01         16.2         1.21         38.9
+     5         1.23         19.7         1.24         39.7
+     6         1.44         23.1         1.48         47.3
+     7         1.67         26.7         1.87         59.9
+     8         1.98         31.7         1.96         62.6
+     9         1.93         30.9         1.94         62.1
+    10         1.99         31.9         1.99         63.6
+    12         1.98         31.7         2.00         64.0
+    14         1.99         31.8         2.00         63.9
+    16         2.00         32.0         2.00         63.9
+    20         1.99         31.8         1.99         63.7
+    24         1.98         31.6         1.99         63.6
+    28         1.96         31.3         2.00         63.9
+    30         1.91         30.5         1.99         63.6
+
+== 3. register tiles on L1-resident operands (K=128), median ==
+ymm  6x2  acc=12   30.9 flop/cyc   48.4% of 64  ( 101.1 GFLOP/s wall)
+zmm  8x1  acc= 8   45.1 flop/cyc   70.5% of 64  ( 135.2 GFLOP/s wall)
+zmm 12x1  acc=12   52.3 flop/cyc   81.7% of 64  ( 142.2 GFLOP/s wall)
+zmm 16x1  acc=16   57.4 flop/cyc   89.7% of 64  ( 170.9 GFLOP/s wall)
+zmm 24x1  acc=24   55.4 flop/cyc   86.5% of 64  ( 165.8 GFLOP/s wall)
+zmm 28x1  acc=28   56.4 flop/cyc   88.1% of 64  ( 169.3 GFLOP/s wall)
+zmm  4x2  acc= 8   46.6 flop/cyc   72.8% of 64  ( 158.4 GFLOP/s wall)
+zmm  6x2  acc=12   58.4 flop/cyc   91.2% of 64  ( 180.6 GFLOP/s wall)
+zmm  8x2  acc=16   58.7 flop/cyc   91.7% of 64  ( 176.6 GFLOP/s wall)
+zmm 10x2  acc=20   61.7 flop/cyc   96.5% of 64  ( 190.9 GFLOP/s wall)
+zmm 12x2  acc=24   56.4 flop/cyc   88.1% of 64  ( 187.3 GFLOP/s wall)
+zmm 14x2  acc=28   60.1 flop/cyc   93.9% of 64  ( 196.0 GFLOP/s wall)
+zmm  4x3  acc=12   58.2 flop/cyc   90.9% of 64  ( 173.9 GFLOP/s wall)
+zmm  6x3  acc=18   61.5 flop/cyc   96.0% of 64  ( 187.9 GFLOP/s wall)
+zmm  8x3  acc=24   58.0 flop/cyc   90.7% of 64  ( 191.2 GFLOP/s wall)
+zmm  9x3  acc=27   57.5 flop/cyc   89.9% of 64  ( 193.5 GFLOP/s wall)
+zmm  4x4  acc=16   62.0 flop/cyc   96.9% of 64  ( 190.9 GFLOP/s wall)
+zmm  5x4  acc=20   60.0 flop/cyc   93.8% of 64  ( 182.8 GFLOP/s wall)
+zmm  6x4  acc=24   60.7 flop/cyc   94.8% of 64  ( 172.5 GFLOP/s wall)
+zmm  7x4  acc=28   55.5 flop/cyc   86.8% of 64  ( 179.6 GFLOP/s wall)
+zmm  3x8  acc=24   49.8 flop/cyc   77.7% of 64  ( 154.6 GFLOP/s wall)
+
+== 4. zmm instruction latency / reciprocal throughput (core cycles, median) ==
+vfmadd231ps                  lat  3.88 cyc   recip.tp  0.50 cyc  (2.00/cyc)
+vaddps                       lat  3.42 cyc   recip.tp  0.51 cyc  (1.98/cyc)
+vmulps                       lat  3.40 cyc   recip.tp  0.50 cyc  (2.01/cyc)
+vmaxps                       lat  3.90 cyc   recip.tp  0.50 cyc  (2.00/cyc)
+vdivps                       lat 16.83 cyc   recip.tp 10.05 cyc  (0.10/cyc)
+vsqrtps                      lat 18.81 cyc   recip.tp 12.00 cyc  (0.08/cyc)
+vrcp14ps                     lat  5.57 cyc   recip.tp  1.86 cyc  (0.54/cyc)
+vrsqrt14ps                   lat  5.32 cyc   recip.tp  1.87 cyc  (0.53/cyc)
+vscalefps                    lat  3.85 cyc   recip.tp  0.50 cyc  (1.99/cyc)
+vgetexpps                    lat  3.91 cyc   recip.tp  0.50 cyc  (1.99/cyc)
+vgetmantps                   lat  3.89 cyc   recip.tp  0.50 cyc  (2.01/cyc)
+vrndscaleps                  lat  7.90 cyc   recip.tp  1.12 cyc  (0.89/cyc)
+vpermps                      lat  2.57 cyc   recip.tp  0.89 cyc  (1.12/cyc)
+vpermt2ps                    lat  2.58 cyc   recip.tp  0.90 cyc  (1.12/cyc)
+vshufps                      lat  0.90 cyc   recip.tp  0.90 cyc  (1.11/cyc)
+vunpcklps                    lat  0.88 cyc   recip.tp  0.88 cyc  (1.14/cyc)
+vshuff32x4                   lat  2.58 cyc   recip.tp  0.91 cyc  (1.10/cyc)
+vcvtps2dq+vcvtdq2ps          lat  7.06 cyc   recip.tp  1.02 cyc  (0.98/cyc)
+vpaddd                       lat  0.88 cyc   recip.tp  0.46 cyc  (2.19/cyc)
+vcmpps->k + vblendmps        lat  3.47 cyc   recip.tp  0.94 cyc  (1.06/cyc)
+vfixupimmps                  lat  3.94 cyc   recip.tp  0.50 cyc  (2.01/cyc)
+
+== 5. op throughput, register vs folded L1 memory operand (/cyc) ==
+first column via the zmm FMA reference (exact for FMA/add), second via clock-after
+vorps reg                     2.13   1.98
+vorps m512                    1.38   1.31
+vaddps reg                    2.00   1.88
+vaddps m512                   1.72   1.55
+vfmadd231ps reg               2.00   1.74
+vfmadd231ps m512              1.55   1.29
+vfmadd231ps m32{1to16}        1.73   1.59
+

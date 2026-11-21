@@ -7,7 +7,9 @@
 # built and benchmarked in.
 set -euo pipefail
 
-OUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/results"
+# OUT_DIR overrides the destination (results/zen2 holds the original Zen 2
+# target's files, results/emr the Emerald Rapids one's).
+OUT_DIR="${OUT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/results}"
 mkdir -p "$OUT_DIR"
 
 {
@@ -33,7 +35,7 @@ check_flag() {
   echo "=== ISA flags of interest ==="
   for f in sse4_2 avx avx2 fma f16c \
            avx512f avx512cd avx512bw avx512dq avx512vl \
-           avx512_vnni avx512bf16 avx512_fp16 amx_tile amx_bf16; do
+           avx512_vnni avx512_bf16 avx512_fp16 avx512ifma avx512vbmi avx_vnni amx_tile amx_bf16; do
     printf '%-16s %s\n' "$f" "$(check_flag "$f")"
   done
   echo

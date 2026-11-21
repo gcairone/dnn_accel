@@ -1,0 +1,5 @@
+=== cache topology (cpu0, from /sys) ===
+index=index0 level=1 type=Data         size=48K      ways=12   sets=64       line=64   shared_cpus=0
+index=index1 level=1 type=Instruction  size=32K      ways=8    sets=64       line=64   shared_cpus=0
+index=index2 level=2 type=Unified      size=2048K    ways=16   sets=2048     line=64   shared_cpus=0
+index=index3 level=3 type=Unified      size=266240K  ways=20   sets=212992   line=64   shared_cpus=0-3
